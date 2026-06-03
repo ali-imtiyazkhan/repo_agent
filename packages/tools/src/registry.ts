@@ -1,7 +1,8 @@
+import { z } from "zod"
 import type { Tool } from "../../shared/src"
-import type { ZodType } from "zod"
+import type { AgentError } from "../../shared/src"
 
-// Registry 
+//  Registry 
 
 export class ToolRegistry {
     private tools = new Map<string, Tool<unknown, unknown>>()
@@ -15,6 +16,11 @@ export class ToolRegistry {
         return this
     }
 
+    registerAll(tools: Tool<unknown, unknown>[]): this {
+        for (const tool of tools) this.register(tool)
+        return this
+    }
+
     get(fullName: string): Tool<unknown, unknown> | undefined {
         return this.tools.get(fullName)
     }
@@ -23,18 +29,34 @@ export class ToolRegistry {
         return this.tools.has(fullName)
     }
 
+    // Anthropic expects dots replaced with double underscores in tool names
     toAnthropicTools(): AnthropicToolDefinition[] {
-        return Array.from(this.tools.values()).map(tool => ({
+        return Array.from(this.tools.values()).map((tool) => ({
             name: `${tool.namespace}__${tool.name}`,
             description: tool.description,
             input_schema: zodToJsonSchema(tool.inputSchema),
         }))
     }
 
+    // Resolve from Anthropic's double-underscore format back to dot format
+    resolveAnthropicName(anthropicName: string): string {
+        return anthropicName.replace("__", ".")
+    }
+
     namespace(ns: string): Tool<unknown, unknown>[] {
         return Array.from(this.tools.entries())
             .filter(([key]) => key.startsWith(`${ns}.`))
             .map(([, tool]) => tool)
+    }
+
+    // Scoped registry for subagents — only exposes allowed tools
+    scoped(allowedNames: string[]): ToolRegistry {
+        const sub = new ToolRegistry()
+        for (const name of allowedNames) {
+            const tool = this.tools.get(name)
+            if (tool) sub.register(tool)
+        }
+        return sub
     }
 
     get size(): number {
@@ -44,9 +66,18 @@ export class ToolRegistry {
     list(): string[] {
         return Array.from(this.tools.keys())
     }
+
+    summary(): Record<string, number> {
+        const counts: Record<string, number> = {}
+        for (const key of this.tools.keys()) {
+            const ns = key.split(".")[0] ?? "unknown"
+            counts[ns] = (counts[ns] ?? 0) + 1
+        }
+        return counts
+    }
 }
 
-// Anthropic tool definition shape 
+//  Anthropic tool definition shape 
 
 export interface AnthropicToolDefinition {
     name: string
@@ -54,11 +85,9 @@ export interface AnthropicToolDefinition {
     input_schema: Record<string, unknown>
 }
 
-// Zod → JSON Schema (minimal, covers what we need) 
-// We write our own instead of pulling a library so we control the output shape
-// and keep the bundle lean.
+// Zod → JSON Schema 
 
-export function zodToJsonSchema(schema: ZodType): Record<string, unknown> {
+export function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
     const def = (schema as any)._def
 
     switch (def.typeName) {
@@ -68,21 +97,32 @@ export function zodToJsonSchema(schema: ZodType): Record<string, unknown> {
             const required: string[] = []
 
             for (const [key, value] of Object.entries(shape)) {
-                properties[key] = zodToJsonSchema(value as ZodType)
                 const fieldDef = (value as any)._def
-                if (fieldDef.typeName !== "ZodOptional") {
+                properties[key] = zodToJsonSchema(value as z.ZodType)
+                if (
+                    fieldDef.typeName !== "ZodOptional" &&
+                    fieldDef.typeName !== "ZodDefault"
+                ) {
                     required.push(key)
                 }
             }
 
-            return { type: "object", properties, required }
+            const description = def.description as string | undefined
+            return {
+                type: "object",
+                properties,
+                ...(required.length ? { required } : {}),
+                ...(description ? { description } : {}),
+            }
         }
 
-        case "ZodString":
+        case "ZodString": {
+            const description = def.description as string | undefined
             return {
                 type: "string",
-                ...(def.description ? { description: def.description } : {}),
+                ...(description ? { description } : {}),
             }
+        }
 
         case "ZodNumber":
             return { type: "number" }
@@ -91,16 +131,35 @@ export function zodToJsonSchema(schema: ZodType): Record<string, unknown> {
             return { type: "boolean" }
 
         case "ZodArray":
-            return { type: "array", items: zodToJsonSchema(def.type) }
+            return {
+                type: "array",
+                items: zodToJsonSchema(def.type as z.ZodType),
+            }
 
         case "ZodOptional":
-            return zodToJsonSchema(def.innerType)
+            return zodToJsonSchema(def.innerType as z.ZodType)
+
+        case "ZodDefault":
+            return zodToJsonSchema(def.innerType as z.ZodType)
 
         case "ZodEnum":
-            return { type: "string", enum: def.values }
+            return { type: "string", enum: def.values as string[] }
 
         case "ZodUnion":
-            return { oneOf: def.options.map((o: ZodType) => zodToJsonSchema(o)) }
+            return {
+                oneOf: (def.options as z.ZodType[]).map(zodToJsonSchema),
+            }
+
+        case "ZodNullable": {
+            const inner = zodToJsonSchema(def.innerType as z.ZodType)
+            return { ...inner, nullable: true }
+        }
+
+        case "ZodRecord":
+            return {
+                type: "object",
+                additionalProperties: zodToJsonSchema(def.valueType as z.ZodType),
+            }
 
         default:
             return { type: "string" }
