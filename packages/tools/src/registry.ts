@@ -3,7 +3,6 @@ import type { Tool } from "../../shared/src"
 import type { AgentError } from "../../shared/src"
 
 //  Registry 
-
 export class ToolRegistry {
     private tools = new Map<string, Tool<unknown, unknown>>()
 
