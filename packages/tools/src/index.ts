@@ -3,6 +3,7 @@ import { gitTools } from "./git/index.js"
 import { githubTools } from "./github/index.js"
 import { codeTools } from "./code/index.js"
 import { shellTools } from "./shell/index.js"
+import { agentTools, agentRunReviewer } from "./agent/index.js"
 
 export { ToolRegistry } from "./registry.js"
 export { zodToJsonSchema } from "./registry.js"
@@ -79,9 +80,17 @@ export {
   shellTools,
 } from "./shell/index.js"
 
+// Agent namespace exports
+export {
+  agentRunReviewer,
+  agentTools,
+} from "./agent/index.js"
+
 //  createRegistry 
 // Single factory function — every part of the codebase calls this
 // to get a fully-wired registry. Subagents call scoped() on the result.
+
+let globalRegistry: ToolRegistry | null = null
 
 export function createRegistry(): ToolRegistry {
   const registry = new ToolRegistry()
@@ -91,6 +100,7 @@ export function createRegistry(): ToolRegistry {
     .registerAll(githubTools as any)
     .registerAll(codeTools as any)
     .registerAll(shellTools as any)
+    .registerAll(agentTools as any)
 
   const summary = registry.summary()
   const total = registry.size
@@ -100,7 +110,15 @@ export function createRegistry(): ToolRegistry {
     console.log(`  ${ns}.*  →  ${count} tools`)
   }
 
+  globalRegistry = registry
   return registry
+}
+
+export function getGlobalRegistry(): ToolRegistry {
+  if (!globalRegistry) {
+    return createRegistry()
+  }
+  return globalRegistry
 }
 
 //  Subagent tool scopes 

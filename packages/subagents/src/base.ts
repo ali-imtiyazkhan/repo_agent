@@ -1,12 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk"
 import type { SubagentInput, SubagentOutput, Result, AgentError } from "../../shared/src"
-import { ok, err, withRetry } from "../../shared/src"
+import { ok, err, withRetry, anthropicRateLimiter } from "../../shared/src"
 import type { ToolRegistry } from "../../tools/src"
 
 const MODEL = "claude-opus-4-5"
 const MAX_TOKENS = 4096
 
-//  BaseSubagent 
+// BaseSubagent 
 // Each subagent runs in a completely isolated Anthropic API context. 
 // It has its own message history, its own scoped tool set, and returns
 // a strongly-typed structured result back to the orchestrator.
@@ -143,13 +143,15 @@ export abstract class BaseSubagent<TInput, TOutput> {
         tools: any[]
     }): Promise<Result<Anthropic.Message, AgentError>> {
         try {
-            const msg = await this.client.messages.create({
-                model: MODEL,
-                max_tokens: MAX_TOKENS,
-                system: params.system,
-                messages: params.messages,
-                ...(params.tools.length > 0 ? { tools: params.tools } : {}),
-            })
+            const msg = await anthropicRateLimiter.wrap(() =>
+                this.client.messages.create({
+                    model: MODEL,
+                    max_tokens: MAX_TOKENS,
+                    system: params.system,
+                    messages: params.messages,
+                    ...(params.tools.length > 0 ? { tools: params.tools } : {}),
+                })
+            )
             return ok(msg)
         } catch (e) {
             const error = e as Error & { status?: number }
