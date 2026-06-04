@@ -1,0 +1,31 @@
+{
+  "name": "@repo-agent/evals",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "eval": "tsx src/run.ts",
+    "eval:single": "tsx src/run.ts --fixture"
+  },
+  "dependencies": {
+    "@repo-agent/agent": "workspace:*",
+    "@repo-agent/shared": "workspace:*",
+    "@repo-agent/tools": "workspace:*",
+    "execa": "^9.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0"
+  }
+}
