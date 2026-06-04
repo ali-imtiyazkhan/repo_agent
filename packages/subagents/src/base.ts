@@ -7,7 +7,7 @@ const MODEL = "claude-opus-4-5"
 const MAX_TOKENS = 4096
 
 //  BaseSubagent 
-// Each subagent runs in a completely isolated Anthropic API context.
+// Each subagent runs in a completely isolated Anthropic API context. 
 // It has its own message history, its own scoped tool set, and returns
 // a strongly-typed structured result back to the orchestrator.
 // This is NOT a function call — it is a full independent agent execution.
