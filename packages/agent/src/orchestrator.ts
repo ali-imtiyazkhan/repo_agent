@@ -9,7 +9,7 @@ import type {
   Result,
   AgentError,
 } from "../../shared/src"
-import { ok, err, withRetry } from "../../shared/src"
+import { ok, err, withRetry, obsLogger, anthropicRateLimiter } from "../../shared/src"
 import type { ToolRegistry } from "../../tools/src"
 import { VERIFIER_TOOLS } from "../../tools/src"
 import * as fs from "fs/promises"
@@ -46,10 +46,14 @@ export class Orchestrator {
   async run(goal: string, cwd: string): Promise<Result<string, AgentError>> {
     console.log(`\n[orchestrator] Session ${this.sessionId}`)
     console.log(`[orchestrator] Goal: ${goal}\n`)
+    await obsLogger.logSessionStart(this.sessionId, goal)
 
     // Step 1: Plan
     const planResult = await this.plan(goal, cwd)
-    if (!planResult.ok) return planResult
+    if (!planResult.ok) {
+      await obsLogger.logError(this.sessionId, planResult.error.code, planResult.error.message)
+      return planResult
+    }
 
     const plan = planResult.value
     console.log(`[orchestrator] Plan created with ${plan.steps.length} steps\n`)
@@ -60,10 +64,12 @@ export class Orchestrator {
       plan.currentStepIndex = i
 
       console.log(`\n[orchestrator] ── Step ${i + 1}/${plan.steps.length}: ${step.description}`)
+      await obsLogger.logStepUpdate(this.sessionId, step.id, step.description, "executing")
 
       const stepResult = await this.executeWithVerify(step, plan, cwd)
       if (!stepResult.ok) {
         console.error(`[orchestrator] Step failed: ${stepResult.error.message}`)
+        await obsLogger.logStepUpdate(this.sessionId, step.id, step.description, "failed", undefined, stepResult.error.message)
         if (stepResult.error.code === "PLAN_COHERENCE_LOST") {
           return stepResult
         }
@@ -75,6 +81,7 @@ export class Orchestrator {
       step.status = "done"
       step.result = stepResult.value
       step.completedAt = Date.now()
+      await obsLogger.logStepUpdate(this.sessionId, step.id, step.description, "done")
 
       // Context management: summarise if approaching token budget
       if (this.tokensUsed > TOKEN_BUDGET * SUMMARY_THRESHOLD) {
@@ -248,6 +255,7 @@ Return ONLY valid JSON matching this schema:
 
         const result = await tool.execute(toolUse.input)
         const duration = Date.now() - callStart
+        await obsLogger.logToolCall(this.sessionId, toolName, toolUse.input, result.ok ? result.value : result.error, duration, result.ok)
 
         const record: ToolCallRecord = {
           toolName,
@@ -504,18 +512,23 @@ Respond with ONLY this JSON:
   private async callModel(params: {
     system: string
     messages: Anthropic.MessageParam[]
-    tools: Anthropic.Tool[]
+    tools: any[]
   }): Promise<Result<Anthropic.Message, AgentError>> {
     try {
-      const msg = await this.client.messages.create({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
-        system: params.system,
-        messages: params.messages,
-        ...(params.tools.length > 0
-          ? { tools: params.tools as Anthropic.Tool[] }
-          : {}),
-      })
+      const msg = await anthropicRateLimiter.wrap(() =>
+        this.client.messages.create({
+          model: MODEL,
+          max_tokens: MAX_TOKENS,
+          system: params.system,
+          messages: params.messages,
+          ...(params.tools.length > 0
+            ? { tools: params.tools as Anthropic.Tool[] }
+            : {}),
+        })
+      )
+      if (msg.usage) {
+        await obsLogger.logTokenUsage(this.sessionId, params.system.slice(0, 30), msg.usage.input_tokens, msg.usage.output_tokens)
+      }
       return ok(msg)
     } catch (e) {
       const error = e as Error & { status?: number }
