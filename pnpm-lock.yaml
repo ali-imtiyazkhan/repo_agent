@@ -97,6 +97,25 @@ importers:
         specifier: ^5.4.0
         version: 5.9.2
 
+  packages/subagents:
+    dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.27.0
+        version: 0.27.3
+      '@repo-agent/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@repo-agent/tools':
+        specifier: workspace:*
+        version: link:../tools
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.19
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.2
+
   packages/tools:
     dependencies:
       '@octokit/rest':

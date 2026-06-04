@@ -467,7 +467,7 @@ Respond with ONLY this JSON:
     }
   }
 
-  // ─── Checkpoint ─────────────────────────────────────────────────────────────
+  // Checkpoint
 
   private async checkpoint(plan: Plan): Promise<void> {
     try {
@@ -507,7 +507,7 @@ Respond with ONLY this JSON:
     }
   }
 
-  // ─── Model call ─────────────────────────────────────────────────────────────
+  // Model call 
 
   private async callModel(params: {
     system: string
