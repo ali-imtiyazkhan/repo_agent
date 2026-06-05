@@ -1,0 +1,2 @@
+{"timestamp":"2026-06-05T11:23:06.741Z","sessionId":"d6438b72-bfaa-46dc-945b-545ba2bd60d5","event":"session_start","data":{"goal":"Fix the TypeScript error in src/utils.ts and make sure the file compiles"}}
+{"timestamp":"2026-06-05T11:23:06.756Z","sessionId":"d6438b72-bfaa-46dc-945b-545ba2bd60d5","event":"error","data":{"code":"TOOL_EXECUTION_FAILED","message":"Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the \"X-Api-Key\" or \"Authorization\" headers to be explicitly omitted"}}

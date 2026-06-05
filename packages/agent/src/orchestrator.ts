@@ -15,6 +15,9 @@ import { VERIFIER_TOOLS } from "@repo-agent/tools"
 import * as fs from "fs/promises"
 import * as path from "path"
 import * as crypto from "crypto"
+import { Planner } from "./planner.js"
+import { saveCheckpoint, loadCheckpoint } from "./checkpoint.js"
+import { buildExecutorContext, summariseContext } from "./context.js"
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -49,7 +52,15 @@ export class Orchestrator {
     await obsLogger.logSessionStart(this.sessionId, goal)
 
     // Step 1: Plan
-    const planResult = await this.plan(goal, cwd)
+    const planner = new Planner(this.client, this.registry)
+    const planResult = await planner.plan(
+      goal,
+      cwd,
+      MODEL,
+      TOKEN_BUDGET,
+      MAX_STEP_RETRIES,
+      (params) => this.callModel(params)
+    )
     if (!planResult.ok) {
       await obsLogger.logError(this.sessionId, planResult.error.code, planResult.error.message)
       return planResult
@@ -85,90 +96,20 @@ export class Orchestrator {
 
       // Context management: summarise if approaching token budget
       if (this.tokensUsed > TOKEN_BUDGET * SUMMARY_THRESHOLD) {
-        await this.summariseContext(plan)
+        const summaryRes = await summariseContext(plan, this.ledger, (params) => this.callModel(params))
+        this.summary = summaryRes.summary
+        this.ledger = summaryRes.ledger
+        this.tokensUsed = Math.floor(this.tokensUsed * 0.3)
       }
 
       // Checkpoint after every step
-      await this.checkpoint(plan)
+      await saveCheckpoint(this.sessionId, plan, this.ledger, this.summary)
     }
 
     const completed = plan.steps.filter((s) => s.status === "done").length
     const summary = `Completed ${completed}/${plan.steps.length} steps for goal: "${goal}"`
     console.log(`\n[orchestrator] ${summary}`)
     return ok(summary)
-  }
-
-  // ─── Planner ────────────────────────────────────────────────────────────────
-
-  private async plan(goal: string, cwd: string): Promise<Result<Plan, AgentError>> {
-    const toolList = this.registry.list().join(", ")
-
-    const response = await withRetry(() =>
-      this.callModel({
-        system: `You are a planning agent for a repository automation system.
-Given a goal, break it into clear, ordered steps.
-Available tools: ${toolList}
-Return ONLY valid JSON matching this schema:
-{
-  "steps": [
-    {
-      "description": "string — what this step does",
-      "toolHints": ["tool.name", ...] — tools likely needed
-    }
-  ]
-}`,
-        messages: [
-          {
-            role: "user",
-            content: `Goal: ${goal}\nRepository path: ${cwd}\n\nCreate a step-by-step plan.`,
-          },
-        ],
-        tools: [],
-      })
-    )
-
-    if (!response.ok) return response
-
-    try {
-      const text = response.value.content
-        .filter((b): b is Anthropic.TextBlock => b.type === "text")
-        .map((b) => b.text)
-        .join("")
-
-      const jsonMatch = text.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) throw new Error("No JSON in planner response")
-
-      const parsed = JSON.parse(jsonMatch[0]) as {
-        steps: Array<{ description: string; toolHints: string[] }>
-      }
-
-      const plan: Plan = {
-        id: crypto.randomUUID(),
-        goal,
-        steps: parsed.steps.map((s, i) => ({
-          id: `step-${i + 1}`,
-          description: s.description,
-          toolHints: s.toolHints,
-          status: "pending",
-          attempts: 0,
-          maxAttempts: MAX_STEP_RETRIES,
-          createdAt: Date.now(),
-        })),
-        currentStepIndex: 0,
-        createdAt: Date.now(),
-        tokenBudget: TOKEN_BUDGET,
-        tokensUsed: 0,
-      }
-
-      return ok(plan)
-    } catch (e) {
-      return err({
-        code: "PARSE_ERROR",
-        message: `Failed to parse plan: ${(e as Error).message}`,
-        retryable: false,
-        cause: e,
-      })
-    }
   }
 
   // ─── Executor ───────────────────────────────────────────────────────────────
@@ -186,7 +127,7 @@ Return ONLY valid JSON matching this schema:
     const messages: Anthropic.MessageParam[] = []
 
     // Build context: summary of past steps + ledger of recent tool calls
-    const context = this.buildExecutorContext(step, plan)
+    const context = buildExecutorContext(step, plan, this.ledger, this.summary)
 
     messages.push({
       role: "user",
@@ -409,102 +350,20 @@ Respond with ONLY this JSON:
     })
   }
 
-  // ─── Context management ──────────────────────────────────────────────────────
-
-  private buildExecutorContext(step: PlanStep, plan: Plan): string {
-    const completedSteps = plan.steps
-      .filter((s) => s.status === "done")
-      .map((s) => `✓ ${s.description}`)
-      .join("\n")
-
-    const recentCalls = this.ledger
-      .slice(-10) // last 10 tool calls
-      .map((r) => `  ${r.toolName}: ${JSON.stringify(r.output).slice(0, 200)}`)
-      .join("\n")
-
-    return [
-      this.summary ? `## Context summary\n${this.summary}` : "",
-      completedSteps ? `## Completed steps\n${completedSteps}` : "",
-      recentCalls ? `## Recent tool calls\n${recentCalls}` : "",
-      step.verifierFeedback
-        ? `## Previous attempt feedback\n${step.verifierFeedback}`
-        : "",
-      `## Current step\n${step.description}`,
-      `## Tool hints\n${step.toolHints.join(", ")}`,
-    ]
-      .filter(Boolean)
-      .join("\n\n")
-  }
-
-  private async summariseContext(plan: Plan): Promise<void> {
-    console.log("[orchestrator] Summarising context (token budget threshold reached)")
-
-    const response = await this.callModel({
-      system: "Summarise the following agent session context concisely for future reference.",
-      messages: [
-        {
-          role: "user",
-          content: `Goal: ${plan.goal}\n\nCompleted steps:\n${plan.steps
-            .filter((s) => s.status === "done")
-            .map((s) => `- ${s.description}: ${JSON.stringify(s.result).slice(0, 300)}`)
-            .join("\n")}\n\nRecent tool calls:\n${this.ledger
-            .slice(-20)
-            .map((r) => `${r.toolName}: ${JSON.stringify(r.output).slice(0, 200)}`)
-            .join("\n")}`,
-        },
-      ],
-      tools: [],
-    })
-
-    if (response.ok) {
-      this.summary = response.value.content
-        .filter((b): b is Anthropic.TextBlock => b.type === "text")
-        .map((b) => b.text)
-        .join("")
-      // Reset ledger to prevent unbounded growth
-      this.ledger = this.ledger.slice(-5)
-      this.tokensUsed = Math.floor(this.tokensUsed * 0.3)
-    }
-  }
-
-  // Checkpoint
-
-  private async checkpoint(plan: Plan): Promise<void> {
-    try {
-      await fs.mkdir(CHECKPOINT_DIR, { recursive: true })
-      const snapshot: ContextSnapshot = {
-        sessionId: this.sessionId,
-        plan,
-        toolCallLedger: this.ledger,
-        summary: this.summary,
-        checkpointedAt: Date.now(),
-      }
-      const file = path.join(CHECKPOINT_DIR, `${this.sessionId}.json`)
-      await fs.writeFile(file, JSON.stringify(snapshot, null, 2), "utf-8")
-    } catch {
-      // Checkpoint failures are non-fatal
-    }
-  }
-
   // Resume from a checkpoint
   static async resume(
     sessionId: string,
     registry: ToolRegistry
   ): Promise<{ orchestrator: Orchestrator; plan: Plan } | null> {
-    try {
-      const file = path.join(CHECKPOINT_DIR, `${sessionId}.json`)
-      const raw = await fs.readFile(file, "utf-8")
-      const snapshot = JSON.parse(raw) as ContextSnapshot
+    const snapshot = await loadCheckpoint(sessionId)
+    if (!snapshot) return null
 
-      const orchestrator = new Orchestrator(registry)
-      orchestrator.sessionId = snapshot.sessionId
-      orchestrator.ledger = snapshot.toolCallLedger
-      orchestrator.summary = snapshot.summary
+    const orchestrator = new Orchestrator(registry)
+    orchestrator.sessionId = snapshot.sessionId
+    orchestrator.ledger = snapshot.toolCallLedger
+    orchestrator.summary = snapshot.summary
 
-      return { orchestrator, plan: snapshot.plan }
-    } catch {
-      return null
-    }
+    return { orchestrator, plan: snapshot.plan }
   }
 
   // Model call 
