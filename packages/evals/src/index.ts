@@ -4,7 +4,7 @@ import * as crypto from "crypto"
 import { createRegistry } from "../../tools/src/index.js"
 import { Orchestrator } from "../../agent/src/orchestrator.js"
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// Types 
 
 export interface EvalFixture {
     id: string
