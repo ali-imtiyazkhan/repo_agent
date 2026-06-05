@@ -1,0 +1,38 @@
+{
+  "fixtureId": "refactor-to-class",
+  "fixtureName": "Refactor functions to a class",
+  "passed": false,
+  "score": 0.3333333333333333,
+  "outcomeResults": [
+    {
+      "outcome": {
+        "type": "file_contains",
+        "target": "src/logger.ts",
+        "value": "class Logger"
+      },
+      "passed": false,
+      "reason": "File missing: \"class Logger\""
+    },
+    {
+      "outcome": {
+        "type": "file_contains",
+        "target": "src/logger.ts",
+        "value": "constructor"
+      },
+      "passed": false,
+      "reason": "File missing: \"constructor\""
+    },
+    {
+      "outcome": {
+        "type": "no_typescript_errors",
+        "target": "src/logger.ts"
+      },
+      "passed": true,
+      "reason": "No TypeScript errors"
+    }
+  ],
+  "toolCallCount": 0,
+  "tokensUsed": 0,
+  "durationMs": 3035,
+  "error": "Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the \"X-Api-Key\" or \"Authorization\" headers to be explicitly omitted"
+}

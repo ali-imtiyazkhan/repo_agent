@@ -6,30 +6,25 @@ import type {
   VerifierResult,
   ContextSnapshot,
   ToolCallRecord,
-  Result,
+  Result, 
   AgentError,
 } from "@repo-agent/shared"
 import { ok, err, withRetry, obsLogger, anthropicRateLimiter } from "@repo-agent/shared"
 import type { ToolRegistry } from "@repo-agent/tools"
 import { VERIFIER_TOOLS } from "@repo-agent/tools"
-import * as fs from "fs/promises"
-import * as path from "path"
 import * as crypto from "crypto"
 import { Planner } from "./planner.js"
 import { saveCheckpoint, loadCheckpoint } from "./checkpoint.js"
 import { buildExecutorContext, summariseContext } from "./context.js"
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
+// Constants 
 const MODEL = "claude-opus-4-5"
 const MAX_TOKENS = 4096
-const TOKEN_BUDGET = 180_000       // summarise when context approaches this
-const SUMMARY_THRESHOLD = 0.75     // summarise at 75% of budget
+const TOKEN_BUDGET = 180_000 
+const SUMMARY_THRESHOLD = 0.75
 const MAX_STEP_RETRIES = 3
-const CHECKPOINT_DIR = ".agent-checkpoints"
 
-// ─── Orchestrator ─────────────────────────────────────────────────────────────
-
+// Orchestrator
 export class Orchestrator {
   private client: Anthropic
   private registry: ToolRegistry
@@ -44,7 +39,7 @@ export class Orchestrator {
     this.sessionId = crypto.randomUUID()
   }
 
-  // ─── Main entry point ───────────────────────────────────────────────────────
+  //Main entry point
 
   async run(goal: string, cwd: string): Promise<Result<string, AgentError>> {
     console.log(`\n[orchestrator] Session ${this.sessionId}`)

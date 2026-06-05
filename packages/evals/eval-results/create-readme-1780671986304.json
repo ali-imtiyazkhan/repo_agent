@@ -1,0 +1,38 @@
+{
+  "fixtureId": "create-readme",
+  "fixtureName": "Create a README",
+  "passed": false,
+  "score": 0,
+  "outcomeResults": [
+    {
+      "outcome": {
+        "type": "file_exists",
+        "target": "README.md"
+      },
+      "passed": false,
+      "reason": "File not found: README.md"
+    },
+    {
+      "outcome": {
+        "type": "file_contains",
+        "target": "README.md",
+        "value": "## Installation"
+      },
+      "passed": false,
+      "reason": "Could not read file: README.md"
+    },
+    {
+      "outcome": {
+        "type": "file_contains",
+        "target": "README.md",
+        "value": "add"
+      },
+      "passed": false,
+      "reason": "Could not read file: README.md"
+    }
+  ],
+  "toolCallCount": 0,
+  "tokensUsed": 0,
+  "durationMs": 1008,
+  "error": "Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the \"X-Api-Key\" or \"Authorization\" headers to be explicitly omitted"
+}

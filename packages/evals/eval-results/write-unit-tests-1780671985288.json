@@ -1,0 +1,47 @@
+{
+  "fixtureId": "write-unit-tests",
+  "fixtureName": "Write unit tests",
+  "passed": false,
+  "score": 0,
+  "outcomeResults": [
+    {
+      "outcome": {
+        "type": "file_exists",
+        "target": "src/math.test.ts"
+      },
+      "passed": false,
+      "reason": "File not found: src/math.test.ts"
+    },
+    {
+      "outcome": {
+        "type": "file_contains",
+        "target": "src/math.test.ts",
+        "value": "describe"
+      },
+      "passed": false,
+      "reason": "Could not read file: src/math.test.ts"
+    },
+    {
+      "outcome": {
+        "type": "file_contains",
+        "target": "src/math.test.ts",
+        "value": "divide"
+      },
+      "passed": false,
+      "reason": "Could not read file: src/math.test.ts"
+    },
+    {
+      "outcome": {
+        "type": "file_contains",
+        "target": "src/math.test.ts",
+        "value": "Division by zero"
+      },
+      "passed": false,
+      "reason": "Could not read file: src/math.test.ts"
+    }
+  ],
+  "toolCallCount": 0,
+  "tokensUsed": 0,
+  "durationMs": 996,
+  "error": "Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the \"X-Api-Key\" or \"Authorization\" headers to be explicitly omitted"
+}
