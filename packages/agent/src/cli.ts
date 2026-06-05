@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createRegistry } from "../../tools/src"
+import { createRegistry } from "@repo-agent/tools"
 import { Orchestrator } from "./orchestrator.js"
 import * as readline from "readline"
 import * as fs from "fs/promises"

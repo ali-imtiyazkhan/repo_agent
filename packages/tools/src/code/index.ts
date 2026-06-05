@@ -1,6 +1,6 @@
 import { z } from "zod"
-import { ok, err } from "../../../shared/src"
-import type { Tool } from "../../../shared/src"
+import { ok, err } from "@repo-agent/shared"
+import type { Tool } from "@repo-agent/shared"
 import * as fs from "fs/promises"
 import * as path from "path"
 import { Project, SyntaxKind } from "ts-morph"
@@ -9,7 +9,7 @@ import { execaCommand } from "execa"
 //  code.readFile
 
 export const codeReadFile: Tool<
-    { filePath: string; startLine?: number; endLine?: number },
+    { filePath: string; startLine?: number | undefined; endLine?: number | undefined },
     { content: string; lines: number; sizeBytes: number }
 > = {
     namespace: "code",
@@ -25,7 +25,8 @@ export const codeReadFile: Tool<
         lines: z.number(),
         sizeBytes: z.number(),
     }),
-    async execute({ filePath, startLine, endLine }) {
+    async execute(input) {
+        const { filePath, startLine, endLine } = input
         try {
             const raw = await fs.readFile(filePath, "utf-8")
             const allLines = raw.split("\n")
@@ -53,7 +54,7 @@ export const codeReadFile: Tool<
 //  code.writeFile 
 
 export const codeWriteFile: Tool<
-    { filePath: string; content: string; createDirs?: boolean },
+    { filePath: string; content: string; createDirs?: boolean | undefined },
     { written: boolean; sizeBytes: number }
 > = {
     namespace: "code",
@@ -68,7 +69,8 @@ export const codeWriteFile: Tool<
             .describe("Create parent directories if they don't exist"),
     }),
     outputSchema: z.object({ written: z.boolean(), sizeBytes: z.number() }),
-    async execute({ filePath, content, createDirs = true }) {
+    async execute(input) {
+        const { filePath, content, createDirs = true } = input
         try {
             if (createDirs) {
                 await fs.mkdir(path.dirname(filePath), { recursive: true })
@@ -101,7 +103,8 @@ export const codeDeleteFile: Tool<
     description: "Delete a file from the filesystem",
     inputSchema: z.object({ filePath: z.string() }),
     outputSchema: z.object({ deleted: z.boolean() }),
-    async execute({ filePath }) {
+    async execute(input) {
+        const { filePath } = input
         try {
             await fs.unlink(filePath)
             return ok({ deleted: true })
@@ -120,7 +123,7 @@ export const codeDeleteFile: Tool<
 //  code.listDirectory 
 
 export const codeListDirectory: Tool<
-    { dirPath: string; recursive?: boolean; extensions?: string[] },
+    { dirPath: string; recursive?: boolean | undefined; extensions?: string[] | undefined },
     { files: Array<{ path: string; sizeBytes: number; isDirectory: boolean }> }
 > = {
     namespace: "code",
@@ -143,7 +146,8 @@ export const codeListDirectory: Tool<
             })
         ),
     }),
-    async execute({ dirPath, recursive = false, extensions }) {
+    async execute(input) {
+        const { dirPath, recursive = false, extensions } = input
         try {
             const results: Array<{
                 path: string
@@ -200,7 +204,7 @@ export const codeListDirectory: Tool<
 // The patch string comes directly from GitDiff output
 
 export const codeApplyPatch: Tool<
-    { cwd: string; patch: string; dryRun?: boolean },
+    { cwd: string; patch: string; dryRun?: boolean | undefined },
     { applied: boolean; filesChanged: string[]; rejects: string[] }
 > = {
     namespace: "code",
@@ -220,7 +224,8 @@ export const codeApplyPatch: Tool<
         filesChanged: z.array(z.string()),
         rejects: z.array(z.string()),
     }),
-    async execute({ cwd, patch, dryRun = false }) {
+    async execute(input) {
+        const { cwd, patch, dryRun = false } = input
         try {
             const tmpFile = path.join(cwd, ".agent-patch.diff")
             await fs.writeFile(tmpFile, patch, "utf-8")
@@ -261,9 +266,9 @@ export const codeSearchInFiles: Tool<
     {
         cwd: string
         pattern: string
-        extensions?: string[]
-        caseSensitive?: boolean
-        maxResults?: number
+        extensions?: string[] | undefined
+        caseSensitive?: boolean | undefined
+        maxResults?: number | undefined
     },
     {
         matches: Array<{
@@ -296,7 +301,8 @@ export const codeSearchInFiles: Tool<
         ),
         totalMatches: z.number(),
     }),
-    async execute({ cwd, pattern, extensions, caseSensitive = true, maxResults = 100 }) {
+    async execute(input) {
+        const { cwd, pattern, extensions, caseSensitive = true, maxResults = 100 } = input
         try {
             const flags = caseSensitive ? "" : "-i"
             const extFilter =
@@ -338,7 +344,7 @@ export const codeReplaceInFile: Tool<
         filePath: string
         oldString: string
         newString: string
-        occurrences?: "first" | "all"
+        occurrences?: "first" | "all" | undefined
     },
     { replacements: number; content: string }
 > = {
@@ -352,7 +358,8 @@ export const codeReplaceInFile: Tool<
         occurrences: z.enum(["first", "all"]).optional().describe("How many to replace"),
     }),
     outputSchema: z.object({ replacements: z.number(), content: z.string() }),
-    async execute({ filePath, oldString, newString, occurrences = "all" }) {
+    async execute(input) {
+        const { filePath, oldString, newString, occurrences = "all" } = input
         try {
             const content = await fs.readFile(filePath, "utf-8")
             let count = 0
@@ -420,7 +427,8 @@ export const codeAstQuery: Tool<
             })
         ),
     }),
-    async execute({ filePath, query }) {
+    async execute(input) {
+        const { filePath, query } = input
         try {
             const project = new Project({ useInMemoryFileSystem: false })
             const sourceFile = project.addSourceFileAtPath(filePath)
@@ -536,7 +544,7 @@ export const codeAstQuery: Tool<
 // ─── code.lint ────────────────────────────────────────────────────────────────
 
 export const codeLint: Tool<
-    { cwd: string; files?: string[]; fix?: boolean },
+    { cwd: string; files?: string[] | undefined; fix?: boolean | undefined },
     {
         passed: boolean
         errorCount: number
@@ -565,7 +573,8 @@ export const codeLint: Tool<
             })
         ),
     }),
-    async execute({ cwd, files, fix = false }) {
+    async execute(input) {
+        const { cwd, files, fix = false } = input
         try {
             const target = files?.join(" ") ?? "src/"
             const fixFlag = fix ? "--fix" : ""
@@ -644,7 +653,8 @@ export const codeTypecheck: Tool<
             })
         ),
     }),
-    async execute({ cwd }) {
+    async execute(input) {
+        const { cwd } = input
         try {
             const result = await execaCommand("npx tsc --noEmit --pretty false", {
                 cwd,
@@ -690,7 +700,7 @@ export const codeTypecheck: Tool<
 // ─── code.findSymbol ──────────────────────────────────────────────────────────
 
 export const codeFindSymbol: Tool<
-    { cwd: string; symbol: string; extensions?: string[] },
+    { cwd: string; symbol: string; extensions?: string[] | undefined },
     {
         occurrences: Array<{
             file: string
@@ -721,7 +731,8 @@ export const codeFindSymbol: Tool<
             })
         ),
     }),
-    async execute({ cwd, symbol, extensions = [".ts", ".tsx"] }) {
+    async execute(input) {
+        const { cwd, symbol, extensions = [".ts", ".tsx"] } = input
         try {
             const project = new Project({ useInMemoryFileSystem: false })
             const extFilter = extensions.map((e) => `**/*${e}`)
@@ -796,7 +807,8 @@ export const codeGetFileSummary: Tool<
         sizeBytes: z.number(),
         topLevelSymbols: z.array(z.string()),
     }),
-    async execute({ filePath }) {
+    async execute(input) {
+        const { filePath } = input
         try {
             const raw = await fs.readFile(filePath, "utf-8")
             const stat = await fs.stat(filePath)
@@ -849,7 +861,7 @@ export const codeGetFileSummary: Tool<
 // ─── code.moveFile ────────────────────────────────────────────────────────────
 
 export const codeMoveFile: Tool<
-    { fromPath: string; toPath: string; createDirs?: boolean },
+    { fromPath: string; toPath: string; createDirs?: boolean | undefined },
     { moved: boolean; from: string; to: string }
 > = {
     namespace: "code",
@@ -865,7 +877,8 @@ export const codeMoveFile: Tool<
         from: z.string(),
         to: z.string(),
     }),
-    async execute({ fromPath, toPath, createDirs = true }) {
+    async execute(input) {
+        const { fromPath, toPath, createDirs = true } = input
         try {
             if (createDirs) {
                 await fs.mkdir(path.dirname(toPath), { recursive: true })

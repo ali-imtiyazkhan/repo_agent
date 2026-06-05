@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk"
-import type { SubagentInput, SubagentOutput, Result, AgentError } from "../../shared/src"
-import { ok, err, withRetry, anthropicRateLimiter } from "../../shared/src"
-import type { ToolRegistry } from "../../tools/src"
+import type { SubagentInput, SubagentOutput, Result, AgentError } from "@repo-agent/shared"
+import { ok, err, withRetry, anthropicRateLimiter } from "@repo-agent/shared"
+import type { ToolRegistry } from "@repo-agent/tools"
 
 const MODEL = "claude-opus-4-5"
 const MAX_TOKENS = 4096
@@ -58,8 +58,8 @@ export abstract class BaseSubagent<TInput, TOutput> {
             // Done — extract structured result
             if (msg.stop_reason === "end_turn") {
                 const text = msg.content
-                    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-                    .map((b) => b.text)
+                    .filter((b: Anthropic.ContentBlock): b is Anthropic.TextBlock => b.type === "text")
+                    .map((b: Anthropic.TextBlock) => b.text)
                     .join("")
 
                 try {
@@ -82,7 +82,7 @@ export abstract class BaseSubagent<TInput, TOutput> {
 
             // Process tool calls
             const toolUseBlocks = msg.content.filter(
-                (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
+                (b: Anthropic.ContentBlock): b is Anthropic.ToolUseBlock => b.type === "tool_use"
             )
 
             if (toolUseBlocks.length === 0) break

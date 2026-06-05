@@ -1,14 +1,14 @@
 import { z } from "zod"
 import { simpleGit } from "simple-git"
-import type { Tool } from "../../../shared/src"
-import { ok, err } from "../../../shared/src"
+import type { Tool } from "@repo-agent/shared"
+import { ok, err } from "@repo-agent/shared"
 
 const git = (cwd: string) => simpleGit({ baseDir: cwd, binary: "git" })
 
 // ─── git.clone ────────────────────────────────────────────────────────────────
 
 export const gitClone: Tool<
-  { url: string; destination: string; branch?: string },
+  { url: string; destination: string; branch?: string | undefined },
   { path: string; defaultBranch: string }
 > = {
   namespace: "git",
@@ -24,7 +24,8 @@ export const gitClone: Tool<
     defaultBranch: z.string(),
   }),
   
-  async execute({ url, destination, branch }) {
+  async execute(input) {
+    const { url, destination, branch } = input
     try {
       const g = simpleGit()
       await g.clone(url, destination, branch ? ["-b", branch] : [])
@@ -69,7 +70,8 @@ export const gitStatus: Tool<
     behind: z.number(),
   }),
   
-  async execute({ cwd }) {
+  async execute(input) {
+    const { cwd } = input
     try {
       const status = await git(cwd).status()
       return ok({
@@ -95,7 +97,7 @@ export const gitStatus: Tool<
 // ─── git.diff ─────────────────────────────────────────────────────────────────
 
 export const gitDiff: Tool<
-  { cwd: string; base?: string; head?: string; file?: string },
+  { cwd: string; base?: string | undefined; head?: string | undefined; file?: string | undefined },
   { diff: string; filesChanged: number; insertions: number; deletions: number }
 > = {
   namespace: "git",
@@ -113,7 +115,8 @@ export const gitDiff: Tool<
     insertions: z.number(),
     deletions: z.number(),
   }),
-  async execute({ cwd, base, head, file }) {
+  async execute(input) {
+    const { cwd, base, head, file } = input
     try {
       const g = git(cwd)
       const args = [base, head].filter(Boolean) as string[]
@@ -141,7 +144,7 @@ export const gitDiff: Tool<
 // ─── git.log ──────────────────────────────────────────────────────────────────
 
 export const gitLog: Tool<
-  { cwd: string; limit?: number; branch?: string },
+  { cwd: string; limit?: number | undefined; branch?: string | undefined },
   {
     commits: Array<{
       hash: string
@@ -169,7 +172,8 @@ export const gitLog: Tool<
       })
     ),
   }),
-  async execute({ cwd, limit = 20, branch }) {
+  async execute(input) {
+    const { cwd, limit = 20, branch } = input
     try {
       const log = await git(cwd).log({
         maxCount: limit,
@@ -198,7 +202,7 @@ export const gitLog: Tool<
 // ─── git.commit ───────────────────────────────────────────────────────────────
 
 export const gitCommit: Tool<
-  { cwd: string; message: string; files?: string[] },
+  { cwd: string; message: string; files?: string[] | undefined },
   { hash: string; branch: string }
 > = {
   namespace: "git",
@@ -213,7 +217,8 @@ export const gitCommit: Tool<
       .describe("Files to stage, defaults to all"),
   }),
   outputSchema: z.object({ hash: z.string(), branch: z.string() }),
-  async execute({ cwd, message, files }) {
+  async execute(input) {
+    const { cwd, message, files } = input
     try {
       const g = git(cwd)
       await g.add(files ?? ["."])
@@ -234,7 +239,7 @@ export const gitCommit: Tool<
 // ─── git.branch ───────────────────────────────────────────────────────────────
 
 export const gitBranch: Tool<
-  { cwd: string; name: string; checkout?: boolean },
+  { cwd: string; name: string; checkout?: boolean | undefined },
   { created: string; current: string }
 > = {
   namespace: "git",
@@ -249,7 +254,8 @@ export const gitBranch: Tool<
       .describe("Switch to new branch after creating"),
   }),
   outputSchema: z.object({ created: z.string(), current: z.string() }),
-  async execute({ cwd, name, checkout = true }) {
+  async execute(input) {
+    const { cwd, name, checkout = true } = input
     try {
       const g = git(cwd)
       await g.checkoutLocalBranch(name)
@@ -271,7 +277,7 @@ export const gitBranch: Tool<
 // ─── git.blame ────────────────────────────────────────────────────────────────
 
 export const gitBlame: Tool<
-  { cwd: string; file: string; startLine?: number; endLine?: number },
+  { cwd: string; file: string; startLine?: number | undefined; endLine?: number | undefined },
   {
     lines: Array<{
       line: number
@@ -300,7 +306,8 @@ export const gitBlame: Tool<
       })
     ),
   }),
-  async execute({ cwd, file, startLine, endLine }) {
+  async execute(input) {
+    const { cwd, file, startLine, endLine } = input
     try {
       const args = ["blame", "--porcelain"]
       if (startLine && endLine) args.push(`-L ${startLine},${endLine}`)
@@ -355,8 +362,8 @@ function parseBlameOutput(
 // ─── git.stash ────────────────────────────────────────────────────────────────
 
 export const gitStash: Tool<
-  { cwd: string; action: "push" | "pop" | "list"; message?: string },
-  { success: boolean; stashes?: string[] }
+  { cwd: string; action: "push" | "pop" | "list"; message?: string | undefined },
+  { success: boolean; stashes?: string[] | undefined }
 > = {
   namespace: "git",
   name: "stash",
@@ -370,7 +377,8 @@ export const gitStash: Tool<
     success: z.boolean(),
     stashes: z.array(z.string()).optional(),
   }),
-  async execute({ cwd, action, message }) {
+  async execute(input) {
+    const { cwd, action, message } = input
     try {
       const g = git(cwd)
       if (action === "push") {
@@ -409,7 +417,8 @@ export const gitCheckout: Tool<
   description: "Checkout a branch or commit",
   inputSchema: z.object({ cwd: z.string(), ref: z.string() }),
   outputSchema: z.object({ current: z.string() }),
-  async execute({ cwd, ref }) {
+  async execute(input) {
+    const { cwd, ref } = input
     try {
       await git(cwd).checkout(ref)
       const status = await git(cwd).status()
@@ -429,7 +438,7 @@ export const gitCheckout: Tool<
 // ─── git.merge ────────────────────────────────────────────────────────────────
 
 export const gitMerge: Tool<
-  { cwd: string; branch: string; noFf?: boolean },
+  { cwd: string; branch: string; noFf?: boolean | undefined },
   { success: boolean; conflicts: string[] }
 > = {
   namespace: "git",
@@ -444,7 +453,8 @@ export const gitMerge: Tool<
     success: z.boolean(),
     conflicts: z.array(z.string()),
   }),
-  async execute({ cwd, branch, noFf = false }) {
+  async execute(input) {
+    const { cwd, branch, noFf = false } = input
     try {
       const g = git(cwd)
       const args = noFf ? ["--no-ff", branch] : [branch]
@@ -469,7 +479,7 @@ export const gitMerge: Tool<
 // ─── git.push ─────────────────────────────────────────────────────────────────
 
 export const gitPush: Tool<
-  { cwd: string; remote?: string; branch?: string; force?: boolean },
+  { cwd: string; remote?: string | undefined; branch?: string | undefined; force?: boolean | undefined },
   { success: boolean; remote: string; branch: string }
 > = {
   namespace: "git",
@@ -486,7 +496,8 @@ export const gitPush: Tool<
     remote: z.string(),
     branch: z.string(),
   }),
-  async execute({ cwd, remote = "origin", branch, force = false }) {
+  async execute(input) {
+    const { cwd, remote = "origin", branch, force = false } = input
     try {
       const g = git(cwd)
       const status = await g.status()
@@ -509,7 +520,7 @@ export const gitPush: Tool<
 // ─── git.tag ──────────────────────────────────────────────────────────────────
 
 export const gitTag: Tool<
-  { cwd: string; name: string; message?: string; ref?: string },
+  { cwd: string; name: string; message?: string | undefined; ref?: string | undefined },
   { tag: string; ref: string }
 > = {
   namespace: "git",
@@ -522,7 +533,8 @@ export const gitTag: Tool<
     ref: z.string().optional().describe("Commit to tag, defaults to HEAD"),
   }),
   outputSchema: z.object({ tag: z.string(), ref: z.string() }),
-  async execute({ cwd, name, message, ref }) {
+  async execute(input) {
+    const { cwd, name, message, ref } = input
     try {
       const g = git(cwd)
       if (message) {

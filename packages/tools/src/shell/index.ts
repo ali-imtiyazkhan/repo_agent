@@ -1,19 +1,19 @@
 import { z } from "zod"
-import { ok, err } from "../../../shared/src"
-import type { Tool } from "../../../shared/src"
+import { ok, err } from "@repo-agent/shared"
+import type { Tool } from "@repo-agent/shared"
 import { execa, execaCommand } from "execa"
 import * as fs from "fs/promises"
 import * as path from "path"
-import * as crypto from "crypto"
+import { createHash } from "crypto"
 
-// shell.exec 
+// shell.exec
 
 export const shellExec: Tool<
     {
         command: string
         cwd: string
-        env?: Record<string, string>
-        timeoutMs?: number
+        env?: Record<string, string> | undefined
+        timeoutMs?: number | undefined
     },
     {
         stdout: string
@@ -37,7 +37,8 @@ export const shellExec: Tool<
         exitCode: z.number(),
         durationMs: z.number(),
     }),
-    async execute({ command, cwd, env, timeoutMs = 30_000 }) {
+    async execute(input) {
+        const { command, cwd, env, timeoutMs = 30_000 } = input
         const start = Date.now()
         try {
             const result = await execaCommand(command, {
@@ -70,10 +71,10 @@ export const shellExec: Tool<
 export const shellRunTests: Tool<
     {
         cwd: string
-        pattern?: string
-        reporter?: "verbose" | "json" | "dot"
-        coverage?: boolean
-        timeoutMs?: number
+        pattern?: string | undefined
+        reporter?: "verbose" | "json" | "dot" | undefined
+        coverage?: boolean | undefined
+        timeoutMs?: number | undefined
     },
     {
         passed: boolean
@@ -83,7 +84,7 @@ export const shellRunTests: Tool<
         skipped_count: number
         duration: number
         failures: Array<{ name: string; message: string; file: string }>
-        coverage?: { lines: number; functions: number; branches: number }
+        coverage?: { lines: number; functions: number; branches: number } | undefined
     }
 > = {
     namespace: "shell",
@@ -114,7 +115,8 @@ export const shellRunTests: Tool<
             })
             .optional(),
     }),
-    async execute({ cwd, pattern, reporter = "json", coverage = false, timeoutMs = 60_000 }) {
+    async execute(input) {
+        const { cwd, pattern, reporter = "json", coverage = false, timeoutMs = 60_000 } = input
         try {
             const patternArg = pattern ? pattern : ""
             const coverageArg = coverage ? "--coverage" : ""
@@ -216,9 +218,9 @@ export const shellRunTests: Tool<
 export const shellInstall: Tool<
     {
         cwd: string
-        packages?: string[]
-        dev?: boolean
-        packageManager?: "npm" | "pnpm" | "yarn"
+        packages?: string[] | undefined
+        dev?: boolean | undefined
+        packageManager?: "npm" | "pnpm" | "yarn" | undefined
     },
     { success: boolean; stdout: string; installedCount: number }
 > = {
@@ -239,7 +241,8 @@ export const shellInstall: Tool<
         stdout: z.string(),
         installedCount: z.number(),
     }),
-    async execute({ cwd, packages, dev = false, packageManager = "pnpm" }) {
+    async execute(input) {
+        const { cwd, packages, dev = false, packageManager = "pnpm" } = input
         try {
             let cmd: string
             if (!packages || packages.length === 0) {
@@ -281,7 +284,7 @@ export const shellInstall: Tool<
 // ─── shell.build ──────────────────────────────────────────────────────────────
 
 export const shellBuild: Tool<
-    { cwd: string; script?: string; env?: Record<string, string> },
+    { cwd: string; script?: string | undefined; env?: Record<string, string> | undefined },
     { success: boolean; stdout: string; stderr: string; durationMs: number }
 > = {
     namespace: "shell",
@@ -301,7 +304,8 @@ export const shellBuild: Tool<
         stderr: z.string(),
         durationMs: z.number(),
     }),
-    async execute({ cwd, script = "build", env }) {
+    async execute(input) {
+        const { cwd, script = "build", env } = input
         const start = Date.now()
         try {
             const result = await execaCommand(`pnpm run ${script}`, {
@@ -332,7 +336,7 @@ export const shellBuild: Tool<
 // ─── shell.readEnv ────────────────────────────────────────────────────────────
 
 export const shellReadEnv: Tool<
-    { cwd: string; keys?: string[] },
+    { cwd: string; keys?: string[] | undefined },
     { env: Record<string, string>; envFileExists: boolean }
 > = {
     namespace: "shell",
@@ -349,7 +353,8 @@ export const shellReadEnv: Tool<
         env: z.record(z.string()),
         envFileExists: z.boolean(),
     }),
-    async execute({ cwd, keys }) {
+    async execute(input) {
+        const { cwd, keys } = input
         try {
             const envPath = path.join(cwd, ".env")
             let envVars: Record<string, string> = {}
@@ -412,7 +417,7 @@ export const shellReadEnv: Tool<
 // ─── shell.hashFile ───────────────────────────────────────────────────────────
 
 export const shellHashFile: Tool<
-    { filePath: string; algorithm?: "md5" | "sha1" | "sha256" },
+    { filePath: string; algorithm?: "md5" | "sha1" | "sha256" | undefined },
     { hash: string; algorithm: string; sizeBytes: number }
 > = {
     namespace: "shell",
@@ -427,11 +432,12 @@ export const shellHashFile: Tool<
         algorithm: z.string(),
         sizeBytes: z.number(),
     }),
-    async execute({ filePath, algorithm = "sha256" }) {
+    async execute(input) {
+        const { filePath, algorithm = "sha256" } = input
         try {
             const content = await fs.readFile(filePath)
             const stat = await fs.stat(filePath)
-            const hash = crypto.createHash(algorithm).update(content).digest("hex")
+            const hash = createHash(algorithm).update(content).digest("hex")
             return ok({ hash, algorithm, sizeBytes: stat.size })
         } catch (e) {
             return err({
@@ -461,7 +467,8 @@ export const shellWhich: Tool<
         available: z.record(z.boolean()),
         paths: z.record(z.string()),
     }),
-    async execute({ commands }) {
+    async execute(input) {
+        const { commands } = input
         try {
             const available: Record<string, boolean> = {}
             const paths: Record<string, string> = {}
@@ -496,7 +503,7 @@ export const shellWhich: Tool<
 // ─── shell.killProcess ────────────────────────────────────────────────────────
 
 export const shellKillProcess: Tool<
-    { pid: number; signal?: "SIGTERM" | "SIGKILL" | "SIGINT" },
+    { pid: number; signal?: "SIGTERM" | "SIGKILL" | "SIGINT" | undefined },
     { killed: boolean; pid: number }
 > = {
     namespace: "shell",
@@ -507,7 +514,8 @@ export const shellKillProcess: Tool<
         signal: z.enum(["SIGTERM", "SIGKILL", "SIGINT"]).optional(),
     }),
     outputSchema: z.object({ killed: z.boolean(), pid: z.number() }),
-    async execute({ pid, signal = "SIGTERM" }) {
+    async execute(input) {
+        const { pid, signal = "SIGTERM" } = input
         try {
             process.kill(pid, signal)
             return ok({ killed: true, pid })
@@ -526,7 +534,7 @@ export const shellKillProcess: Tool<
 // ─── shell.writeEnvFile ───────────────────────────────────────────────────────
 
 export const shellWriteEnvFile: Tool<
-    { cwd: string; vars: Record<string, string>; merge?: boolean },
+    { cwd: string; vars: Record<string, string>; merge?: boolean | undefined },
     { written: boolean; path: string; keyCount: number }
 > = {
     namespace: "shell",
@@ -545,7 +553,8 @@ export const shellWriteEnvFile: Tool<
         path: z.string(),
         keyCount: z.number(),
     }),
-    async execute({ cwd, vars, merge = true }) {
+    async execute(input) {
+        const { cwd, vars, merge = true } = input
         try {
             const envPath = path.join(cwd, ".env")
             let existing: Record<string, string> = {}
@@ -590,9 +599,9 @@ export const shellScriptRunner: Tool<
     {
         cwd: string
         script: string
-        args?: string[]
-        env?: Record<string, string>
-        timeoutMs?: number
+        args?: string[] | undefined
+        env?: Record<string, string> | undefined
+        timeoutMs?: number | undefined
     },
     {
         stdout: string
@@ -619,7 +628,8 @@ export const shellScriptRunner: Tool<
         durationMs: z.number(),
         success: z.boolean(),
     }),
-    async execute({ cwd, script, args = [], env, timeoutMs = 60_000 }) {
+    async execute(input) {
+        const { cwd, script, args = [], env, timeoutMs = 60_000 } = input
         const start = Date.now()
         try {
             const argsStr = args.join(" ")
