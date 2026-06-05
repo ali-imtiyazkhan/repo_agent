@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "dotenv/config"
 import { EvalRunner, FIXTURES } from "./index.js"
 
 const args = process.argv.slice(2)

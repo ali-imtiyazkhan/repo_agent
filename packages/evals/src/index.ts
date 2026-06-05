@@ -1,8 +1,9 @@
 import * as fs from "fs/promises"
 import * as path from "path"
+import * as os from "os"
 import * as crypto from "crypto"
 import { createRegistry } from "@repo-agent/tools"
-import { Orchestrator } from "@repo-agent/agent" 
+import { Orchestrator } from "@repo-agent/agent"
 
 // Types
 
@@ -452,6 +453,11 @@ export class EvalRunner {
                 return this.failResult(fixture, "Timeout exceeded", Date.now() - start)
             }
 
+            // Agent returned an error (e.g. auth failure, plan parse error)
+            if (!result.ok) {
+                return this.failResult(fixture, result.error.message, Date.now() - start)
+            }
+
             // Score outcomes
             const outcomeResults = await Promise.all(
                 fixture.expectedOutcomes.map((o) => scoreOutcome(o, cwd))
@@ -470,7 +476,7 @@ export class EvalRunner {
                 toolCallCount: 0,
                 tokensUsed: 0,
                 durationMs: Date.now() - start,
-                error: result.ok ? undefined : result.error.message,
+                error: undefined,
             }
 
             await this.saveResult(evalResult)
@@ -503,7 +509,7 @@ export class EvalRunner {
     // ─── Fixture setup ─────────────────────────────────────────────────────────
 
     private async setupFixture(fixture: EvalFixture): Promise<string> {
-        const cwd = path.join("/tmp", `eval-${fixture.id}-${crypto.randomUUID().slice(0, 8)}`)
+        const cwd = path.join(os.tmpdir(), `eval-${fixture.id}-${crypto.randomUUID().slice(0, 8)}`)
         await fs.mkdir(cwd, { recursive: true })
 
         // Write seed files
