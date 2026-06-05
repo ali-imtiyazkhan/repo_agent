@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { Octokit } from "@octokit/rest"
-import type { Tool } from "../../../shared/src"
-import { ok, err } from "../../../shared/src"
+import type { Tool } from "@repo-agent/shared"
+import { ok, err } from "@repo-agent/shared"
 
 // Octokit factory 
 
@@ -63,7 +63,8 @@ export const githubGetPR: Tool<
     reviewers: z.array(z.string()),
     url: z.string(),
   }),
-  async execute({ token, owner, repo, prNumber }) {
+  async execute(input) {
+    const { token, owner, repo, prNumber } = input
     try {
       const { data } = await gh(token).pulls.get({ owner, repo, pull_number: prNumber })
       return ok({
@@ -102,8 +103,8 @@ export const githubListPRs: Tool<
     token: string
     owner: string
     repo: string
-    state?: "open" | "closed" | "all"
-    limit?: number
+    state?: "open" | "closed" | "all" | undefined
+    limit?: number | undefined
   },
   {
     prs: Array<{
@@ -138,7 +139,8 @@ export const githubListPRs: Tool<
       })
     ),
   }),
-  async execute({ token, owner, repo, state = "open", limit = 20 }) {
+  async execute(input) {
+    const { token, owner, repo, state = "open", limit = 20 } = input
     try {
       const { data } = await gh(token).pulls.list({
         owner,
@@ -180,7 +182,7 @@ export const githubCreatePR: Tool<
     body: string
     head: string
     base: string
-    draft?: boolean
+    draft?: boolean | undefined
   },
   { number: number; url: string }
 > = {
@@ -196,7 +198,8 @@ export const githubCreatePR: Tool<
     draft: z.boolean().optional(),
   }),
   outputSchema: z.object({ number: z.number(), url: z.string() }),
-  async execute({ token, owner, repo, title, body, head, base, draft = false }) {
+  async execute(input) {
+    const { token, owner, repo, title, body, head, base, draft = false } = input
     try {
       const { data } = await gh(token).pulls.create({
         owner,
@@ -228,8 +231,8 @@ export const githubMergePR: Tool<
     owner: string
     repo: string
     prNumber: number
-    method?: "merge" | "squash" | "rebase"
-    commitTitle?: string
+    method?: "merge" | "squash" | "rebase" | undefined
+    commitTitle?: string | undefined
   },
   { merged: boolean; sha: string; message: string }
 > = {
@@ -247,7 +250,8 @@ export const githubMergePR: Tool<
     sha: z.string(),
     message: z.string(),
   }),
-  async execute({ token, owner, repo, prNumber, method = "squash", commitTitle }) {
+  async execute(input) {
+    const { token, owner, repo, prNumber, method = "squash", commitTitle } = input
     try {
       const { data } = await gh(token).pulls.merge({
         owner,
@@ -292,7 +296,8 @@ export const githubReviewPR: Tool<
     body: z.string().describe("Review comment body"),
   }),
   outputSchema: z.object({ reviewId: z.number(), state: z.string() }),
-  async execute({ token, owner, repo, prNumber, event, body }) {
+  async execute(input) {
+    const { token, owner, repo, prNumber, event, body } = input
     try {
       const { data } = await gh(token).pulls.createReview({
         owner,
@@ -335,7 +340,8 @@ export const githubGetPRDiff: Tool<
       })
     ),
   }),
-  async execute({ token, owner, repo, prNumber }) {
+  async execute(input) {
+    const { token, owner, repo, prNumber } = input
     try {
       const client = gh(token)
       const { data: filesData } = await client.pulls.listFiles({
@@ -375,8 +381,8 @@ export const githubCreateIssue: Tool<
     repo: string
     title: string
     body: string
-    labels?: string[]
-    assignees?: string[]
+    labels?: string[] | undefined
+    assignees?: string[] | undefined
   },
   { number: number; url: string }
 > = {
@@ -391,15 +397,16 @@ export const githubCreateIssue: Tool<
     assignees: z.array(z.string()).optional(),
   }),
   outputSchema: z.object({ number: z.number(), url: z.string() }),
-  async execute({ token, owner, repo, title, body, labels, assignees }) {
+  async execute(input) {
+    const { token, owner, repo, title, body, labels, assignees } = input
     try {
       const { data } = await gh(token).issues.create({
         owner,
         repo,
         title,
         body,
-        labels,
-        assignees,
+        ...(labels !== undefined ? { labels } : {}),
+        ...(assignees !== undefined ? { assignees } : {}),
       })
       return ok({ number: data.number, url: data.html_url })
     } catch (e) {
@@ -421,9 +428,9 @@ export const githubListIssues: Tool<
     token: string
     owner: string
     repo: string
-    state?: "open" | "closed" | "all"
-    labels?: string[]
-    limit?: number
+    state?: "open" | "closed" | "all" | undefined
+    labels?: string[] | undefined
+    limit?: number | undefined
   },
   {
     issues: Array<{
@@ -459,7 +466,8 @@ export const githubListIssues: Tool<
       })
     ),
   }),
-  async execute({ token, owner, repo, state = "open", labels, limit = 20 }) {
+  async execute(input) {
+    const { token, owner, repo, state = "open", labels, limit = 20 } = input
     try {
       const { data } = await gh(token).issues.listForRepo({
         owner,
@@ -508,7 +516,8 @@ export const githubCommentOnIssue: Tool<
     body: z.string().describe("Comment body in markdown"),
   }),
   outputSchema: z.object({ commentId: z.number(), url: z.string() }),
-  async execute({ token, owner, repo, issueNumber, body }) {
+  async execute(input) {
+    const { token, owner, repo, issueNumber, body } = input
     try {
       const { data } = await gh(token).issues.createComment({
         owner,
@@ -532,7 +541,7 @@ export const githubCommentOnIssue: Tool<
 // ─── github.closeIssue ────────────────────────────────────────────────────────
 
 export const githubCloseIssue: Tool<
-  { token: string; owner: string; repo: string; issueNumber: number; reason?: "completed" | "not_planned" },
+  { token: string; owner: string; repo: string; issueNumber: number; reason?: "completed" | "not_planned" | undefined },
   { closed: boolean; number: number }
 > = {
   namespace: "github",
@@ -544,7 +553,8 @@ export const githubCloseIssue: Tool<
     reason: z.enum(["completed", "not_planned"]).optional(),
   }),
   outputSchema: z.object({ closed: z.boolean(), number: z.number() }),
-  async execute({ token, owner, repo, issueNumber, reason = "completed" }) {
+  async execute(input) {
+    const { token, owner, repo, issueNumber, reason = "completed" } = input
     try {
       const { data } = await gh(token).issues.update({
         owner,
@@ -581,7 +591,8 @@ export const githubAddLabels: Tool<
     labels: z.array(z.string()),
   }),
   outputSchema: z.object({ labels: z.array(z.string()) }),
-  async execute({ token, owner, repo, issueNumber, labels }) {
+  async execute(input) {
+    const { token, owner, repo, issueNumber, labels } = input
     try {
       const { data } = await gh(token).issues.addLabels({
         owner,
@@ -605,7 +616,7 @@ export const githubAddLabels: Tool<
 // ─── github.getActionsStatus ──────────────────────────────────────────────────
 
 export const githubGetActionsStatus: Tool<
-  { token: string; owner: string; repo: string; branch?: string; limit?: number },
+  { token: string; owner: string; repo: string; branch?: string | undefined; limit?: number | undefined },
   {
     runs: Array<{
       id: number
@@ -639,7 +650,8 @@ export const githubGetActionsStatus: Tool<
       })
     ),
   }),
-  async execute({ token, owner, repo, branch, limit = 10 }) {
+  async execute(input) {
+    const { token, owner, repo, branch, limit = 10 } = input
     try {
       const { data } = await gh(token).actions.listWorkflowRunsForRepo({
         owner,
@@ -679,7 +691,7 @@ export const githubTriggerWorkflow: Tool<
     repo: string
     workflowId: string
     ref: string
-    inputs?: Record<string, string>
+    inputs?: Record<string, string> | undefined
   },
   { triggered: boolean }
 > = {
@@ -693,14 +705,15 @@ export const githubTriggerWorkflow: Tool<
     inputs: z.record(z.string()).optional().describe("Workflow input parameters"),
   }),
   outputSchema: z.object({ triggered: z.boolean() }),
-  async execute({ token, owner, repo, workflowId, ref, inputs }) {
+  async execute(input) {
+    const { token, owner, repo, workflowId, ref, inputs } = input
     try {
       await gh(token).actions.createWorkflowDispatch({
         owner,
         repo,
         workflow_id: workflowId,
         ref,
-        inputs,
+        ...(inputs !== undefined ? { inputs } : {}),
       })
       return ok({ triggered: true })
     } catch (e) {
@@ -725,8 +738,8 @@ export const githubCreateRelease: Tool<
     tag: string
     name: string
     body: string
-    draft?: boolean
-    prerelease?: boolean
+    draft?: boolean | undefined
+    prerelease?: boolean | undefined
   },
   { id: number; url: string; tag: string }
 > = {
@@ -742,7 +755,8 @@ export const githubCreateRelease: Tool<
     prerelease: z.boolean().optional(),
   }),
   outputSchema: z.object({ id: z.number(), url: z.string(), tag: z.string() }),
-  async execute({ token, owner, repo, tag, name, body, draft = false, prerelease = false }) {
+  async execute(input) {
+    const { token, owner, repo, tag, name, body, draft = false, prerelease = false } = input
     try {
       const { data } = await gh(token).repos.createRelease({
         owner,
@@ -797,7 +811,8 @@ export const githubGetRepoInfo: Tool<
     topics: z.array(z.string()),
     url: z.string(),
   }),
-  async execute({ token, owner, repo }) {
+  async execute(input) {
+    const { token, owner, repo } = input
     try {
       const { data } = await gh(token).repos.get({ owner, repo })
       return ok({
@@ -850,7 +865,8 @@ export const githubAddPRReviewComment: Tool<
     commitSha: z.string().describe("SHA of the commit to comment on"),
   }),
   outputSchema: z.object({ commentId: z.number(), url: z.string() }),
-  async execute({ token, owner, repo, prNumber, body, path, line, commitSha }) {
+  async execute(input) {
+    const { token, owner, repo, prNumber, body, path, line, commitSha } = input
     try {
       const { data } = await gh(token).pulls.createReviewComment({
         owner,

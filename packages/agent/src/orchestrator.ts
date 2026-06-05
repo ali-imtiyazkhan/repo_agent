@@ -8,10 +8,10 @@ import type {
   ToolCallRecord,
   Result,
   AgentError,
-} from "../../shared/src"
-import { ok, err, withRetry, obsLogger, anthropicRateLimiter } from "../../shared/src"
-import type { ToolRegistry } from "../../tools/src"
-import { VERIFIER_TOOLS } from "../../tools/src"
+} from "@repo-agent/shared"
+import { ok, err, withRetry, obsLogger, anthropicRateLimiter } from "@repo-agent/shared"
+import type { ToolRegistry } from "@repo-agent/tools"
+import { VERIFIER_TOOLS } from "@repo-agent/tools"
 import * as fs from "fs/promises"
 import * as path from "path"
 import * as crypto from "crypto"

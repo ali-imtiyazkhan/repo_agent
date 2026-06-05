@@ -1,6 +1,6 @@
 import { z } from "zod"
-import type { Tool } from "../../shared/src"
-import type { AgentError } from "../../shared/src"
+import type { Tool } from "@repo-agent/shared"
+import type { AgentError } from "@repo-agent/shared"
 
 //  Registry 
 export class ToolRegistry {

@@ -1,11 +1,11 @@
 import { z } from "zod"
-import { ok, err } from "../../../shared/src/index.js"
-import type { Tool } from "../../../shared/src/index.js"
-import { ReviewerSubagent } from "../../../subagents/index.js"
+import { ok, err } from "@repo-agent/shared"
+import type { Tool, Result, AgentError, SubagentOutput } from "@repo-agent/shared"
+
 import { getGlobalRegistry } from "../index.js"
 
 export const agentRunReviewer: Tool<
-    { diff: string; task?: string; context?: string },
+    { diff: string; task?: string | undefined; context?: string | undefined },
     { approved: boolean; comments: any[]; summary: string }
 > = {
     namespace: "agent",
@@ -31,7 +31,19 @@ export const agentRunReviewer: Tool<
     async execute({ diff, task = "Perform a code review on this diff", context = "" }) {
         try {
             const registry = getGlobalRegistry()
-            const subagent = new ReviewerSubagent(registry)
+            // Dynamic import to break circular dependency: tools → subagents → tools.
+            // @repo-agent/subagents cannot be a declared dependency of @repo-agent/tools
+            // because subagents already depends on tools. pnpm workspace symlinks resolve
+            // the specifier at runtime; we suppress the compile-time error here.
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-expect-error — circular dep; resolved at runtime by pnpm workspace
+            const mod = (await import("@repo-agent/subagents")) as {
+                ReviewerSubagent: new (registry: ReturnType<typeof getGlobalRegistry>) => {
+                    run(input: { task: string; context: string; data: { diff: string }; scopedTools: string[] }):
+                        Promise<Result<SubagentOutput<{ approved: boolean; comments: any[]; summary: string }>, AgentError>>
+                }
+            }
+            const subagent = new mod.ReviewerSubagent(registry)
             const result = await subagent.run({
                 task,
                 context,
@@ -57,3 +69,4 @@ export const agentRunReviewer: Tool<
 }
 
 export const agentTools = [agentRunReviewer]
+

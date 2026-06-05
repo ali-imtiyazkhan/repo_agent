@@ -1,10 +1,10 @@
 import * as fs from "fs/promises"
 import * as path from "path"
 import * as crypto from "crypto"
-import { createRegistry } from "../../tools/src/index.js"
-import { Orchestrator } from "../../agent/src/orchestrator.js"
+import { createRegistry } from "@repo-agent/tools"
+import { Orchestrator } from "@repo-agent/agent" 
 
-// Types 
+// Types
 
 export interface EvalFixture {
     id: string
@@ -44,7 +44,7 @@ export interface EvalResult {
     toolCallCount: number
     tokensUsed: number
     durationMs: number
-    error?: string
+    error?: string | undefined
     sessionId?: string
 }
 

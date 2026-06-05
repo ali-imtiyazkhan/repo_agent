@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
-import { RateLimiter } from "../../../shared/src/rate-limit.js"
-import { ObservabilityLogger } from "../../../shared/src/observability.js"
-import { createRegistry } from "../../../tools/src/index.js"
+import { RateLimiter } from "@repo-agent/shared"
+import { ObservabilityLogger } from "@repo-agent/shared"
+import { createRegistry } from "@repo-agent/tools"
 import * as fs from "fs/promises"
 
 vi.mock("fs/promises", async (importOriginal) => {
