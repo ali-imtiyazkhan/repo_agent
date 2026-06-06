@@ -1,4 +1,9 @@
-import Anthropic from "@anthropic-ai/sdk"
+import {
+  GoogleGenerativeAI,
+  type Content,
+  type Part,
+  type GenerateContentResult,
+} from "@google/generative-ai"
 import type {
   Plan,
   PlanStep,
@@ -9,7 +14,7 @@ import type {
   Result, 
   AgentError,
 } from "@repo-agent/shared"
-import { ok, err, withRetry, obsLogger, anthropicRateLimiter } from "@repo-agent/shared"
+import { ok, err, withRetry, obsLogger, geminiRateLimiter } from "@repo-agent/shared"
 import type { ToolRegistry } from "@repo-agent/tools"
 import { VERIFIER_TOOLS } from "@repo-agent/tools"
 import * as crypto from "crypto"
@@ -18,15 +23,14 @@ import { saveCheckpoint, loadCheckpoint } from "./checkpoint.js"
 import { buildExecutorContext, summariseContext } from "./context.js"
 
 // Constants 
-const MODEL = "claude-opus-4-5"
-const MAX_TOKENS = 4096
+const MODEL = "gemini-2.0-flash"
 const TOKEN_BUDGET = 180_000 
 const SUMMARY_THRESHOLD = 0.75
 const MAX_STEP_RETRIES = 3
 
 // Orchestrator
 export class Orchestrator {
-  private client: Anthropic
+  private genAI: GoogleGenerativeAI
   private registry: ToolRegistry
   private sessionId: string
   private ledger: ToolCallRecord[] = []
@@ -34,7 +38,9 @@ export class Orchestrator {
   private tokensUsed: number = 0
 
   constructor(registry: ToolRegistry, apiKey?: string) {
-    this.client = new Anthropic({ apiKey: apiKey ?? process.env.ANTHROPIC_API_KEY })
+    const key = apiKey ?? process.env.GEMINI_API_KEY
+    if (!key) throw new Error("GEMINI_API_KEY is required")
+    this.genAI = new GoogleGenerativeAI(key)
     this.registry = registry
     this.sessionId = crypto.randomUUID()
   }
@@ -47,7 +53,7 @@ export class Orchestrator {
     await obsLogger.logSessionStart(this.sessionId, goal)
 
     // Step 1: Plan
-    const planner = new Planner(this.client, this.registry)
+    const planner = new Planner(this.genAI, this.registry)
     const planResult = await planner.plan(
       goal,
       cwd,
@@ -119,14 +125,14 @@ export class Orchestrator {
     step.attempts++
 
     const toolCallsThisStep: ToolCallRecord[] = []
-    const messages: Anthropic.MessageParam[] = []
+    const contents: Content[] = []
 
     // Build context: summary of past steps + ledger of recent tool calls
     const context = buildExecutorContext(step, plan, this.ledger, this.summary)
 
-    messages.push({
+    contents.push({
       role: "user",
-      content: context,
+      parts: [{ text: context }],
     })
 
     // Agentic loop: keep calling model until it stops using tools
@@ -137,65 +143,75 @@ export class Orchestrator {
       const response = await withRetry(() =>
         this.callModel({
           system: this.executorSystemPrompt(cwd),
-          messages,
-          tools: this.registry.toAnthropicTools(),
+          contents,
+          tools: this.registry.toGeminiTools(),
         })
       )
 
       if (!response.ok) return response
 
-      const msg = response.value
-      this.tokensUsed += msg.usage?.input_tokens ?? 0
-      this.tokensUsed += msg.usage?.output_tokens ?? 0
+      const result = response.value
+      const candidate = result.response.candidates?.[0]
+      if (!candidate) {
+        continueLoop = false
+        break
+      }
+
+      // Track tokens
+      const usage = result.response.usageMetadata
+      if (usage) {
+        this.tokensUsed += usage.promptTokenCount ?? 0
+        this.tokensUsed += usage.candidatesTokenCount ?? 0
+      }
+
+      const responseParts = candidate.content?.parts ?? []
 
       // Add assistant message to history
-      messages.push({ role: "assistant", content: msg.content })
+      contents.push({ role: "model", parts: responseParts })
 
-      if (msg.stop_reason === "end_turn") {
+      // Check for function calls
+      const functionCalls = responseParts.filter(
+        (p: Part) => "functionCall" in p && p.functionCall
+      )
+
+      if (functionCalls.length === 0) {
+        // No tool calls — extract text output and stop
         continueLoop = false
-        lastOutput = msg.content
-          .filter((b): b is Anthropic.TextBlock => b.type === "text")
-          .map((b) => b.text)
+        lastOutput = responseParts
+          .filter((p: Part) => "text" in p && p.text)
+          .map((p: Part) => p.text)
           .join("")
         break
       }
 
       // Process tool calls
-      const toolUseBlocks = msg.content.filter(
-        (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
-      )
+      const functionResponses: Part[] = []
 
-      if (toolUseBlocks.length === 0) {
-        continueLoop = false
-        break
-      }
-
-      const toolResults: Anthropic.ToolResultBlockParam[] = []
-
-      for (const toolUse of toolUseBlocks) {
-        const toolName = this.registry.resolveAnthropicName(toolUse.name)
+      for (const part of functionCalls) {
+        const fc = part.functionCall!
+        const toolName = this.registry.resolveGeminiName(fc.name)
         const tool = this.registry.get(toolName)
         const callStart = Date.now()
 
         if (!tool) {
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: toolUse.id,
-            content: JSON.stringify({ error: `Tool not found: ${toolName}` }),
-            is_error: true,
+          functionResponses.push({
+            functionResponse: {
+              name: fc.name,
+              response: { error: `Tool not found: ${toolName}` },
+            },
           })
           continue
         }
 
         console.log(`  [exec] → ${toolName}`)
 
-        const result = await tool.execute(toolUse.input)
+        const result = await tool.execute(fc.args)
         const duration = Date.now() - callStart
-        await obsLogger.logToolCall(this.sessionId, toolName, toolUse.input, result.ok ? result.value : result.error, duration, result.ok)
+        await obsLogger.logToolCall(this.sessionId, toolName, fc.args, result.ok ? result.value : result.error, duration, result.ok)
 
         const record: ToolCallRecord = {
           toolName,
-          input: toolUse.input,
+          input: fc.args,
           output: result.ok ? result.value : result.error,
           durationMs: duration,
           attempt: step.attempts,
@@ -205,15 +221,17 @@ export class Orchestrator {
         this.ledger.push(record)
         lastOutput = result.ok ? result.value : null
 
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: toolUse.id,
-          content: JSON.stringify(result.ok ? result.value : result.error),
-          is_error: !result.ok,
+        functionResponses.push({
+          functionResponse: {
+            name: fc.name,
+            response: result.ok
+              ? (typeof result.value === "object" && result.value !== null ? result.value : { result: result.value })
+              : { error: result.error },
+          },
         })
       }
 
-      messages.push({ role: "user", content: toolResults })
+      contents.push({ role: "user", parts: functionResponses })
     }
 
     return ok({
@@ -262,17 +280,18 @@ Respond with ONLY this JSON:
     const response = await withRetry(() =>
       this.callModel({
         system: "You are a strict code reviewer. Be precise and thorough.",
-        messages: [{ role: "user", content: verifierPrompt }],
-        tools: scopedRegistry.toAnthropicTools(),
+        contents: [{ role: "user", parts: [{ text: verifierPrompt }] }],
+        tools: scopedRegistry.toGeminiTools(),
       })
     )
 
     if (!response.ok) return response
 
     try {
-      const text = response.value.content
-        .filter((b): b is Anthropic.TextBlock => b.type === "text")
-        .map((b) => b.text)
+      const candidate = response.value.response.candidates?.[0]
+      const text = (candidate?.content?.parts ?? [])
+        .filter((p: Part) => "text" in p && p.text)
+        .map((p: Part) => p.text)
         .join("")
 
       const jsonMatch = text.match(/\{[\s\S]*\}/)
@@ -363,33 +382,40 @@ Respond with ONLY this JSON:
 
   // Model call 
 
-  private async callModel(params: {
+  async callModel(params: {
     system: string
-    messages: Anthropic.MessageParam[]
+    contents: Content[]
     tools: any[]
-  }): Promise<Result<Anthropic.Message, AgentError>> {
+  }): Promise<Result<GenerateContentResult, AgentError>> {
     try {
-      const msg = await anthropicRateLimiter.wrap(() =>
-        this.client.messages.create({
-          model: MODEL,
-          max_tokens: MAX_TOKENS,
-          system: params.system,
-          messages: params.messages,
-          ...(params.tools.length > 0
-            ? { tools: params.tools as Anthropic.Tool[] }
-            : {}),
-        })
+      const model = this.genAI.getGenerativeModel({
+        model: MODEL,
+        systemInstruction: params.system,
+        ...(params.tools.length > 0
+          ? { tools: [{ functionDeclarations: params.tools }] }
+          : {}),
+      })
+
+      const result = await geminiRateLimiter.wrap(() =>
+        model.generateContent({ contents: params.contents })
       )
-      if (msg.usage) {
-        await obsLogger.logTokenUsage(this.sessionId, params.system.slice(0, 30), msg.usage.input_tokens, msg.usage.output_tokens)
+
+      const usage = result.response.usageMetadata
+      if (usage) {
+        await obsLogger.logTokenUsage(
+          this.sessionId,
+          params.system.slice(0, 30),
+          usage.promptTokenCount ?? 0,
+          usage.candidatesTokenCount ?? 0
+        )
       }
-      return ok(msg)
+      return ok(result)
     } catch (e) {
       const error = e as Error & { status?: number }
       return err({
         code: "TOOL_EXECUTION_FAILED",
         message: error.message,
-        retryable: error.status === 429 || error.status === 529,
+        retryable: error.status === 429 || error.status === 503,
         cause: e,
       })
     }

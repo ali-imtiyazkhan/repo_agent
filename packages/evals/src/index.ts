@@ -55,7 +55,7 @@ export interface OutcomeResult {
     reason: string
 }
 
-// ─── Built-in fixtures ────────────────────────────────────────────────────────
+// Built-in fixtures
 
 export const FIXTURES: EvalFixture[] = [
     {
@@ -311,7 +311,7 @@ export function error(msg: string): void {
     },
 ]
 
-// ─── Scorer ───────────────────────────────────────────────────────────────────
+// Scorer
 
 export async function scoreOutcome(
     outcome: ExpectedOutcome,
@@ -421,7 +421,7 @@ export async function scoreOutcome(
     }
 }
 
-// ─── Eval Runner ──────────────────────────────────────────────────────────────
+// Eval Runner 
 
 export class EvalRunner {
     private outputDir: string
@@ -506,11 +506,11 @@ export class EvalRunner {
         return results
     }
 
-    // ─── Fixture setup ─────────────────────────────────────────────────────────
+    // Fixture setup 
 
     private async setupFixture(fixture: EvalFixture): Promise<string> {
         const cwd = path.join(os.tmpdir(), `eval-${fixture.id}-${crypto.randomUUID().slice(0, 8)}`)
-        await fs.mkdir(cwd, { recursive: true })
+         await fs.mkdir(cwd, { recursive: true })
 
         // Write seed files
         if (fixture.seedFiles) {
@@ -540,7 +540,7 @@ export class EvalRunner {
         }
     }
 
-    // ─── Helpers ───────────────────────────────────────────────────────────────
+    // Helpers
 
     private timeout(ms: number): Promise<null> {
         return new Promise((resolve) => setTimeout(() => resolve(null), ms))

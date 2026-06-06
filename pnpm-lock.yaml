@@ -36,9 +36,9 @@ importers:
 
   packages/agent:
     dependencies:
-      '@anthropic-ai/sdk':
-        specifier: ^0.27.0
-        version: 0.27.3
+      '@google/generative-ai':
+        specifier: ^0.24.0
+        version: 0.24.1
       '@repo-agent/shared':
         specifier: workspace:*
         version: link:../shared
@@ -102,9 +102,9 @@ importers:
 
   packages/subagents:
     dependencies:
-      '@anthropic-ai/sdk':
-        specifier: ^0.27.0
-        version: 0.27.3
+      '@google/generative-ai':
+        specifier: ^0.24.0
+        version: 0.24.1
       '@repo-agent/shared':
         specifier: workspace:*
         version: link:../shared
@@ -457,6 +457,10 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@google/generative-ai@0.24.1':
+    resolution: {integrity: sha512-MqO+MLfM6kjxcKoy0p1wRzG3b4ZZXtPI+z2IE26UogS2Cm/XHO+7gGRBh6gcJsOiIVoH93UwKvW4HdgiOZCy9Q==}
+    engines: {node: '>=18.0.0'}
 
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
@@ -1815,6 +1819,8 @@ snapshots:
 
   '@esbuild/win32-x64@0.28.0':
     optional: true
+
+  '@google/generative-ai@0.24.1': {}
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
 

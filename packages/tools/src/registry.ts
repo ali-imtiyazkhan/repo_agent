@@ -42,6 +42,21 @@ export class ToolRegistry {
         return anthropicName.replace("__", ".")
     }
 
+    // Gemini uses functionDeclarations with underscores (dots not allowed)
+    toGeminiTools(): GeminiFunctionDeclaration[] {
+        return Array.from(this.tools.values()).map((tool) => ({
+            name: `${tool.namespace}__${tool.name}`,
+            description: tool.description,
+            parameters: zodToJsonSchema(tool.inputSchema),
+        }))
+    }
+
+    // Resolve from Gemini's double-underscore format back to dot format
+    resolveGeminiName(geminiName: string): string {
+        return geminiName.replace("__", ".")
+    }
+
+
     namespace(ns: string): Tool<unknown, unknown>[] {
         return Array.from(this.tools.entries())
             .filter(([key]) => key.startsWith(`${ns}.`))
@@ -82,6 +97,14 @@ export interface AnthropicToolDefinition {
     name: string
     description: string
     input_schema: Record<string, unknown>
+}
+
+//  Gemini function declaration shape 
+
+export interface GeminiFunctionDeclaration {
+    name: string
+    description: string
+    parameters: Record<string, unknown>
 }
 
 // Zod → JSON Schema 

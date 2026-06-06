@@ -1,15 +1,20 @@
-import Anthropic from "@anthropic-ai/sdk"
+import {
+    GoogleGenerativeAI,
+    type Content,
+    type Part,
+    type GenerateContentResult,
+} from "@google/generative-ai"
 import type { Plan, Result, AgentError } from "@repo-agent/shared"
 import { ok, err, withRetry } from "@repo-agent/shared"
 import type { ToolRegistry } from "@repo-agent/tools"
 import * as crypto from "crypto"
 
 export class Planner {
-    private client: Anthropic
+    private genAI: GoogleGenerativeAI
     private registry: ToolRegistry
 
-    constructor(client: Anthropic, registry: ToolRegistry) {
-        this.client = client
+    constructor(genAI: GoogleGenerativeAI, registry: ToolRegistry) {
+        this.genAI = genAI
         this.registry = registry
     }
 
@@ -19,7 +24,7 @@ export class Planner {
         modelName: string,
         tokenBudget: number,
         maxStepRetries: number,
-        callModel: (params: { system: string; messages: Anthropic.MessageParam[]; tools: any[] }) => Promise<Result<Anthropic.Message, AgentError>>
+        callModel: (params: { system: string; contents: Content[]; tools: any[] }) => Promise<Result<GenerateContentResult, AgentError>>
     ): Promise<Result<Plan, AgentError>> {
         const toolList = this.registry.list().join(", ")
 
@@ -37,10 +42,10 @@ Return ONLY valid JSON matching this schema:
     }
   ]
 }`,
-                messages: [
+                contents: [
                     {
                         role: "user",
-                        content: `Goal: ${goal}\nRepository path: ${cwd}\n\nCreate a step-by-step plan.`,
+                        parts: [{ text: `Goal: ${goal}\nRepository path: ${cwd}\n\nCreate a step-by-step plan.` }],
                     },
                 ],
                 tools: [],
@@ -50,9 +55,10 @@ Return ONLY valid JSON matching this schema:
         if (!response.ok) return response
 
         try {
-            const text = response.value.content
-                .filter((b): b is Anthropic.TextBlock => b.type === "text")
-                .map((b) => b.text)
+            const candidate = response.value.response.candidates?.[0]
+            const text = (candidate?.content?.parts ?? [])
+                .filter((p: Part) => "text" in p && p.text)
+                .map((p: Part) => p.text)
                 .join("")
 
             const jsonMatch = text.match(/\{[\s\S]*\}/)

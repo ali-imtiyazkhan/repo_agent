@@ -49,4 +49,8 @@ export class RateLimiter {
     }
 }
 
-export const anthropicRateLimiter = new RateLimiter({ maxConcurrent: 2, minDelayMs: 1000 })
+// Gemini free tier: 15 RPM, 1M TPM — keep concurrency low
+export const geminiRateLimiter = new RateLimiter({ maxConcurrent: 2, minDelayMs: 4000 })
+
+/** @deprecated Use geminiRateLimiter instead */
+export const anthropicRateLimiter = geminiRateLimiter
