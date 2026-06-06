@@ -8,7 +8,7 @@ import type { SubagentInput, SubagentOutput, Result, AgentError } from "@repo-ag
 import { ok, err, withRetry, geminiRateLimiter } from "@repo-agent/shared"
 import type { ToolRegistry } from "@repo-agent/tools"
 
-const MODEL = "gemini-2.0-flash"
+const MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest"
 
 // BaseSubagent 
 // Each subagent runs in a completely isolated Gemini API context. 

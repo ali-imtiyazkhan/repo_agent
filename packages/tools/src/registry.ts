@@ -47,7 +47,7 @@ export class ToolRegistry {
         return Array.from(this.tools.values()).map((tool) => ({
             name: `${tool.namespace}__${tool.name}`,
             description: tool.description,
-            parameters: zodToJsonSchema(tool.inputSchema),
+            parameters: sanitizeGeminiSchema(zodToJsonSchema(tool.inputSchema)),
         }))
     }
 
@@ -105,6 +105,26 @@ export interface GeminiFunctionDeclaration {
     name: string
     description: string
     parameters: Record<string, unknown>
+}
+
+// Recursively remove fields not supported by Gemini API schema (like additionalProperties)
+export function sanitizeGeminiSchema(schema: Record<string, unknown>): Record<string, unknown> {
+    const clone = JSON.parse(JSON.stringify(schema))
+
+    function removeUnsupported(obj: any) {
+        if (typeof obj !== "object" || obj === null) return
+
+        if ("additionalProperties" in obj) {
+            delete obj.additionalProperties
+        }
+
+        for (const value of Object.values(obj)) {
+            removeUnsupported(value)
+        }
+    }
+
+    removeUnsupported(clone)
+    return clone
 }
 
 // Zod → JSON Schema 
