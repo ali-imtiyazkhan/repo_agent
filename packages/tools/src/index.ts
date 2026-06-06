@@ -7,7 +7,7 @@ import { agentTools, agentRunReviewer } from "./agent/index.js"
 
 export { ToolRegistry } from "./registry.js"
 export { zodToJsonSchema } from "./registry.js"
-export type { AnthropicToolDefinition } from "./registry.js"
+export type { AnthropicToolDefinition, GeminiFunctionDeclaration } from "./registry.js"
 
 // ─── Git namespace exports ────────────────────────────────────────────────────
 export {

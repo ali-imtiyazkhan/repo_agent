@@ -59,10 +59,10 @@ async function runCommand() {
 
 async function runGoal(goal: string) {
     const cwd = process.env.REPO_PATH ?? process.cwd()
-    const apiKey = process.env.ANTHROPIC_API_KEY
+    const apiKey = process.env.GEMINI_API_KEY
 
     if (!apiKey) {
-        console.error("[error] ANTHROPIC_API_KEY environment variable is required")
+        console.error("[error] GEMINI_API_KEY environment variable is required")
         process.exit(1)
     }
 
@@ -166,7 +166,7 @@ Usage:
   agent help                  Show this help
 
 Environment variables:
-  ANTHROPIC_API_KEY           Required — your Anthropic API key
+  GEMINI_API_KEY              Required — your Google Gemini API key
   REPO_PATH                   Repository path (defaults to cwd)
   GITHUB_TOKEN                GitHub personal access token for github.* tools
 

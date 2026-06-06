@@ -20,7 +20,7 @@
     "dev": "tsx src/cli.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.27.0",
+    "@google/generative-ai": "^0.24.0",
     "@repo-agent/shared": "workspace:*",
     "@repo-agent/tools": "workspace:*"
   },

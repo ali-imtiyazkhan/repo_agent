@@ -1,4 +1,8 @@
-import Anthropic from "@anthropic-ai/sdk"
+import type {
+    Content,
+    Part,
+    GenerateContentResult,
+} from "@google/generative-ai"
 import type { Plan, PlanStep, ToolCallRecord, Result, AgentError } from "@repo-agent/shared"
 
 export function buildExecutorContext(
@@ -34,22 +38,24 @@ export function buildExecutorContext(
 export async function summariseContext(
     plan: Plan,
     ledger: ToolCallRecord[],
-    callModel: (params: { system: string; messages: Anthropic.MessageParam[]; tools: any[] }) => Promise<Result<Anthropic.Message, AgentError>>
+    callModel: (params: { system: string; contents: Content[]; tools: any[] }) => Promise<Result<GenerateContentResult, AgentError>>
 ): Promise<{ summary: string; ledger: ToolCallRecord[] }> {
     console.log("[orchestrator] Summarising context (token budget threshold reached)")
 
     const response = await callModel({
         system: "Summarise the following agent session context concisely for future reference.",
-        messages: [
+        contents: [
             {
                 role: "user",
-                content: `Goal: ${plan.goal}\n\nCompleted steps:\n${plan.steps
-                    .filter((s) => s.status === "done")
-                    .map((s) => `- ${s.description}: ${JSON.stringify(s.result).slice(0, 300)}`)
-                    .join("\n")}\n\nRecent tool calls:\n${ledger
-                    .slice(-20)
-                    .map((r) => `${r.toolName}: ${JSON.stringify(r.output).slice(0, 200)}`)
-                    .join("\n")}`,
+                parts: [{
+                    text: `Goal: ${plan.goal}\n\nCompleted steps:\n${plan.steps
+                        .filter((s) => s.status === "done")
+                        .map((s) => `- ${s.description}: ${JSON.stringify(s.result).slice(0, 300)}`)
+                        .join("\n")}\n\nRecent tool calls:\n${ledger
+                        .slice(-20)
+                        .map((r) => `${r.toolName}: ${JSON.stringify(r.output).slice(0, 200)}`)
+                        .join("\n")}`,
+                }],
             },
         ],
         tools: [],
@@ -58,9 +64,10 @@ export async function summariseContext(
     let summary = ""
     let newLedger = ledger
     if (response.ok) {
-        summary = response.value.content
-            .filter((b): b is Anthropic.TextBlock => b.type === "text")
-            .map((b) => b.text)
+        const candidate = response.value.response.candidates?.[0]
+        summary = (candidate?.content?.parts ?? [])
+            .filter((p: Part) => "text" in p && p.text)
+            .map((p: Part) => p.text)
             .join("")
         newLedger = ledger.slice(-5)
     }

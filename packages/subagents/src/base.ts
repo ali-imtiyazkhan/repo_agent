@@ -1,23 +1,29 @@
-import Anthropic from "@anthropic-ai/sdk"
+import {
+    GoogleGenerativeAI,
+    type Content,
+    type Part,
+    type GenerateContentResult,
+} from "@google/generative-ai"
 import type { SubagentInput, SubagentOutput, Result, AgentError } from "@repo-agent/shared"
-import { ok, err, withRetry, anthropicRateLimiter } from "@repo-agent/shared"
+import { ok, err, withRetry, geminiRateLimiter } from "@repo-agent/shared"
 import type { ToolRegistry } from "@repo-agent/tools"
 
-const MODEL = "claude-opus-4-5"
-const MAX_TOKENS = 4096
+const MODEL = "gemini-2.0-flash"
 
 // BaseSubagent 
-// Each subagent runs in a completely isolated Anthropic API context. 
+// Each subagent runs in a completely isolated Gemini API context. 
 // It has its own message history, its own scoped tool set, and returns
 // a strongly-typed structured result back to the orchestrator.
 // This is NOT a function call — it is a full independent agent execution.
 
 export abstract class BaseSubagent<TInput, TOutput> {
-    protected client: Anthropic
+    protected genAI: GoogleGenerativeAI
     protected registry: ToolRegistry
 
     constructor(registry: ToolRegistry, apiKey?: string) {
-        this.client = new Anthropic({ apiKey: apiKey ?? process.env.ANTHROPIC_API_KEY })
+        const key = apiKey ?? process.env.GEMINI_API_KEY
+        if (!key) throw new Error("GEMINI_API_KEY is required")
+        this.genAI = new GoogleGenerativeAI(key)
         this.registry = registry
     }
 
@@ -29,14 +35,14 @@ export abstract class BaseSubagent<TInput, TOutput> {
         input: SubagentInput<TInput>
     ): Promise<Result<SubagentOutput<TOutput>, AgentError>> {
         const scopedRegistry = this.registry.scoped(this.allowedTools)
-        const messages: Anthropic.MessageParam[] = []
+        const contents: Content[] = []
         let toolCallCount = 0
         let totalTokens = 0
 
         // Initial message to the subagent
-        messages.push({
+        contents.push({
             role: "user",
-            content: this.buildPrompt(input),
+            parts: [{ text: this.buildPrompt(input) }],
         })
 
         // Isolated agentic loop
@@ -44,22 +50,33 @@ export abstract class BaseSubagent<TInput, TOutput> {
             const response = await withRetry(() =>
                 this.callModel({
                     system: this.systemPrompt,
-                    messages,
-                    tools: scopedRegistry.toAnthropicTools(),
+                    contents,
+                    tools: scopedRegistry.toGeminiTools(),
                 })
             )
 
             if (!response.ok) return response
 
-            const msg = response.value
-            totalTokens += (msg.usage?.input_tokens ?? 0) + (msg.usage?.output_tokens ?? 0)
-            messages.push({ role: "assistant", content: msg.content })
+            const result = response.value
+            const candidate = result.response.candidates?.[0]
+            if (!candidate) break
+
+            const usage = result.response.usageMetadata
+            totalTokens += (usage?.promptTokenCount ?? 0) + (usage?.candidatesTokenCount ?? 0)
+
+            const responseParts = candidate.content?.parts ?? []
+            contents.push({ role: "model", parts: responseParts })
+
+            // Check for function calls
+            const functionCalls = responseParts.filter(
+                (p: Part) => "functionCall" in p && p.functionCall
+            )
 
             // Done — extract structured result
-            if (msg.stop_reason === "end_turn") {
-                const text = msg.content
-                    .filter((b: Anthropic.ContentBlock): b is Anthropic.TextBlock => b.type === "text")
-                    .map((b: Anthropic.TextBlock) => b.text)
+            if (functionCalls.length === 0) {
+                const text = responseParts
+                    .filter((p: Part) => "text" in p && p.text)
+                    .map((p: Part) => p.text)
                     .join("")
 
                 try {
@@ -81,41 +98,38 @@ export abstract class BaseSubagent<TInput, TOutput> {
             }
 
             // Process tool calls
-            const toolUseBlocks = msg.content.filter(
-                (b: Anthropic.ContentBlock): b is Anthropic.ToolUseBlock => b.type === "tool_use"
-            )
+            const functionResponses: Part[] = []
 
-            if (toolUseBlocks.length === 0) break
-
-            const toolResults: Anthropic.ToolResultBlockParam[] = []
-
-            for (const toolUse of toolUseBlocks) {
-                const toolName = scopedRegistry.resolveAnthropicName(toolUse.name)
+            for (const part of functionCalls) {
+                const fc = part.functionCall!
+                const toolName = scopedRegistry.resolveGeminiName(fc.name)
                 const tool = scopedRegistry.get(toolName)
                 toolCallCount++
 
                 if (!tool) {
-                    toolResults.push({
-                        type: "tool_result",
-                        tool_use_id: toolUse.id,
-                        content: JSON.stringify({ error: `Tool not available in this context: ${toolName}` }),
-                        is_error: true,
+                    functionResponses.push({
+                        functionResponse: {
+                            name: fc.name,
+                            response: { error: `Tool not available in this context: ${toolName}` },
+                        },
                     })
                     continue
                 }
 
                 console.log(`    [subagent:${this.constructor.name}] → ${toolName}`)
-                const result = await tool.execute(toolUse.input)
+                const result = await tool.execute(fc.args)
 
-                toolResults.push({
-                    type: "tool_result",
-                    tool_use_id: toolUse.id,
-                    content: JSON.stringify(result.ok ? result.value : result.error),
-                    is_error: !result.ok,
+                functionResponses.push({
+                    functionResponse: {
+                        name: fc.name,
+                        response: result.ok
+                            ? (typeof result.value === "object" && result.value !== null ? result.value : { result: result.value })
+                            : { error: result.error },
+                    },
                 })
             }
 
-            messages.push({ role: "user", content: toolResults })
+            contents.push({ role: "user", parts: functionResponses })
         }
 
         return err({
@@ -139,26 +153,28 @@ export abstract class BaseSubagent<TInput, TOutput> {
 
     private async callModel(params: {
         system: string
-        messages: Anthropic.MessageParam[]
+        contents: Content[]
         tools: any[]
-    }): Promise<Result<Anthropic.Message, AgentError>> {
+    }): Promise<Result<GenerateContentResult, AgentError>> {
         try {
-            const msg = await anthropicRateLimiter.wrap(() =>
-                this.client.messages.create({
-                    model: MODEL,
-                    max_tokens: MAX_TOKENS,
-                    system: params.system,
-                    messages: params.messages,
-                    ...(params.tools.length > 0 ? { tools: params.tools } : {}),
-                })
+            const model = this.genAI.getGenerativeModel({
+                model: MODEL,
+                systemInstruction: params.system,
+                ...(params.tools.length > 0
+                    ? { tools: [{ functionDeclarations: params.tools }] }
+                    : {}),
+            })
+
+            const result = await geminiRateLimiter.wrap(() =>
+                model.generateContent({ contents: params.contents })
             )
-            return ok(msg)
+            return ok(result)
         } catch (e) {
             const error = e as Error & { status?: number }
             return err({
                 code: "SUBAGENT_FAILED",
                 message: error.message,
-                retryable: error.status === 429,
+                retryable: error.status === 429 || error.status === 503,
                 cause: e,
             })
         }
