@@ -23,7 +23,7 @@ import { saveCheckpoint, loadCheckpoint } from "./checkpoint.js"
 import { buildExecutorContext, summariseContext } from "./context.js"
 
 // Constants 
-const MODEL = "gemini-2.0-flash"
+const MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest"
 const TOKEN_BUDGET = 180_000 
 const SUMMARY_THRESHOLD = 0.75
 const MAX_STEP_RETRIES = 3

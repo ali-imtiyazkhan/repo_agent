@@ -1,0 +1,28 @@
+{
+  "fixtureId": "fix-syntax-error",
+  "fixtureName": "Fix a syntax error",
+  "passed": true,
+  "score": 1,
+  "outcomeResults": [
+    {
+      "outcome": {
+        "type": "no_typescript_errors",
+        "target": "src/utils.ts"
+      },
+      "passed": true,
+      "reason": "No TypeScript errors"
+    },
+    {
+      "outcome": {
+        "type": "file_contains",
+        "target": "src/utils.ts",
+        "value": "console.log"
+      },
+      "passed": true,
+      "reason": "File contains expected string"
+    }
+  ],
+  "toolCallCount": 0,
+  "tokensUsed": 0,
+  "durationMs": 24083
+}
