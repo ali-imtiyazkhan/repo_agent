@@ -1,0 +1,198 @@
+{
+  "passed": 0,
+  "total": 5,
+  "avgScore": 0,
+  "results": [
+    {
+      "fixtureId": "fix-syntax-error",
+      "fixtureName": "Fix a syntax error",
+      "passed": false,
+      "score": 0,
+      "outcomeResults": [
+        {
+          "outcome": {
+            "type": "no_typescript_errors",
+            "target": "src/utils.ts"
+          },
+          "passed": false,
+          "reason": "Fixture failed: GEMINI_API_KEY is required"
+        },
+        {
+          "outcome": {
+            "type": "file_contains",
+            "target": "src/utils.ts",
+            "value": "console.log"
+          },
+          "passed": false,
+          "reason": "Fixture failed: GEMINI_API_KEY is required"
+        }
+      ],
+      "toolCallCount": 0,
+      "tokensUsed": 0,
+      "durationMs": 522,
+      "error": "GEMINI_API_KEY is required"
+    },
+    {
+      "fixtureId": "add-error-handling",
+      "fixtureName": "Add error handling to a function",
+      "passed": false,
+      "score": 0,
+      "outcomeResults": [
+        {
+          "outcome": {
+            "type": "file_contains",
+            "target": "src/api.ts",
+            "value": "try"
+          },
+          "passed": false,
+          "reason": "Fixture failed: GEMINI_API_KEY is required"
+        },
+        {
+          "outcome": {
+            "type": "file_contains",
+            "target": "src/api.ts",
+            "value": "catch"
+          },
+          "passed": false,
+          "reason": "Fixture failed: GEMINI_API_KEY is required"
+        },
+        {
+          "outcome": {
+            "type": "file_contains",
+            "target": "src/api.ts",
+            "value": "Result"
+          },
+          "passed": false,
+          "reason": "Fixture failed: GEMINI_API_KEY is required"
+        }
+      ],
+      "toolCallCount": 0,
+      "tokensUsed": 0,
+      "durationMs": 471,
+      "error": "GEMINI_API_KEY is required"
+    },
+    {
+      "fixtureId": "write-unit-tests",
+      "fixtureName": "Write unit tests",
+      "passed": false,
+      "score": 0,
+      "outcomeResults": [
+        {
+          "outcome": {
+            "type": "file_exists",
+            "target": "src/math.test.ts"
+          },
+          "passed": false,
+          "reason": "Fixture failed: GEMINI_API_KEY is required"
+        },
+        {
+          "outcome": {
+            "type": "file_contains",
+            "target": "src/math.test.ts",
+            "value": "describe"
+          },
+          "passed": false,
+          "reason": "Fixture failed: GEMINI_API_KEY is required"
+        },
+        {
+          "outcome": {
+            "type": "file_contains",
+            "target": "src/math.test.ts",
+            "value": "divide"
+          },
+          "passed": false,
+          "reason": "Fixture failed: GEMINI_API_KEY is required"
+        },
+        {
+          "outcome": {
+            "type": "file_contains",
+            "target": "src/math.test.ts",
+            "value": "Division by zero"
+          },
+          "passed": false,
+          "reason": "Fixture failed: GEMINI_API_KEY is required"
+        }
+      ],
+      "toolCallCount": 0,
+      "tokensUsed": 0,
+      "durationMs": 359,
+      "error": "GEMINI_API_KEY is required"
+    },
+    {
+      "fixtureId": "create-readme",
+      "fixtureName": "Create a README",
+      "passed": false,
+      "score": 0,
+      "outcomeResults": [
+        {
+          "outcome": {
+            "type": "file_exists",
+            "target": "README.md"
+          },
+          "passed": false,
+          "reason": "Fixture failed: GEMINI_API_KEY is required"
+        },
+        {
+          "outcome": {
+            "type": "file_contains",
+            "target": "README.md",
+            "value": "## Installation"
+          },
+          "passed": false,
+          "reason": "Fixture failed: GEMINI_API_KEY is required"
+        },
+        {
+          "outcome": {
+            "type": "file_contains",
+            "target": "README.md",
+            "value": "add"
+          },
+          "passed": false,
+          "reason": "Fixture failed: GEMINI_API_KEY is required"
+        }
+      ],
+      "toolCallCount": 0,
+      "tokensUsed": 0,
+      "durationMs": 511,
+      "error": "GEMINI_API_KEY is required"
+    },
+    {
+      "fixtureId": "refactor-to-class",
+      "fixtureName": "Refactor functions to a class",
+      "passed": false,
+      "score": 0,
+      "outcomeResults": [
+        {
+          "outcome": {
+            "type": "file_contains",
+            "target": "src/logger.ts",
+            "value": "class Logger"
+          },
+          "passed": false,
+          "reason": "Fixture failed: GEMINI_API_KEY is required"
+        },
+        {
+          "outcome": {
+            "type": "file_contains",
+            "target": "src/logger.ts",
+            "value": "constructor"
+          },
+          "passed": false,
+          "reason": "Fixture failed: GEMINI_API_KEY is required"
+        },
+        {
+          "outcome": {
+            "type": "no_typescript_errors",
+            "target": "src/logger.ts"
+          },
+          "passed": false,
+          "reason": "Fixture failed: GEMINI_API_KEY is required"
+        }
+      ],
+      "toolCallCount": 0,
+      "tokensUsed": 0,
+      "durationMs": 434,
+      "error": "GEMINI_API_KEY is required"
+    }
+  ]
+}
