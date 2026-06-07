@@ -45,6 +45,9 @@ importers:
       '@repo-agent/tools':
         specifier: workspace:*
         version: link:../tools
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

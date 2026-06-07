@@ -8,7 +8,10 @@
     "build": "turbo run build",
     "test": "turbo run test",
     "eval": "turbo run eval",
-    "typecheck": "turbo run typecheck"
+    "eval:single": "pnpm --filter @repo-agent/evals eval:single",
+    "typecheck": "turbo run typecheck",
+    "agent": "pnpm --filter @repo-agent/agent dev",
+    "agent:run": "pnpm --filter @repo-agent/agent dev run"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

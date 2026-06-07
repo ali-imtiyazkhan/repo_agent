@@ -22,7 +22,8 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
     "@repo-agent/shared": "workspace:*",
-    "@repo-agent/tools": "workspace:*"
+    "@repo-agent/tools": "workspace:*",
+    "dotenv": "^17.4.2"
   },
   "devDependencies": {
     "typescript": "^5.4.0",

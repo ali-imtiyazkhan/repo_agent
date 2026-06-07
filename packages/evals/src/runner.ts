@@ -6,14 +6,20 @@ import { fileURLToPath } from "url"
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") })
 
-import { EvalRunner, FIXTURES } from "./index.js"
+import { EvalHarness, FIXTURES } from "./index.js"
 
 const args = process.argv.slice(2)
 const fixtureFlag = args.indexOf("--fixture")
 const fixtureId = fixtureFlag !== -1 ? args[fixtureFlag + 1] : undefined
 
 async function main() {
-  const runner = new EvalRunner("eval-results")
+  if (!process.env.GEMINI_API_KEY) {
+    console.error("[eval] GEMINI_API_KEY is required. Set it in .env or your environment.")
+    process.exit(1)
+  }
+
+  const outputDir = path.resolve(__dirname, "../eval-results")
+  const runner = new EvalHarness({ outputDir })
 
   if (fixtureId) {
     const fixture = FIXTURES.find((f) => f.id === fixtureId)
