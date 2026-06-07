@@ -21,6 +21,12 @@ function computeDelay(attempt: number, opts: RetryOptions): number {
     return opts.jitter ? capped * (0.5 + Math.random() * 0.5) : capped
 }
 
+function parseRetryDelayMs(message: string): number | undefined {
+    const match = message.match(/retry in (\d+(?:\.\d+)?)s/i)
+    if (!match) return undefined
+    return Math.ceil(parseFloat(match[1]!) * 1000) + 1000
+}
+
 export async function withRetry<T>(
     fn: () => Promise<Result<T, AgentError>>,
     opts: Partial<RetryOptions> = {}
@@ -38,7 +44,8 @@ export async function withRetry<T>(
         if (!result.error.retryable) return result
 
         if (attempt < options.maxAttempts) {
-            const delay = computeDelay(attempt, options)
+            const rateLimitDelay = parseRetryDelayMs(result.error.message)
+            const delay = rateLimitDelay ?? computeDelay(attempt, options)
             await new Promise(resolve => setTimeout(resolve, delay))
         }
     }

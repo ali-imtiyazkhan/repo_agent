@@ -13,6 +13,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "eval": "tsx src/runner.ts",
     "eval:single": "tsx src/runner.ts --fixture"
   },

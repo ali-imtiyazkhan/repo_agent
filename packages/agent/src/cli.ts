@@ -1,8 +1,14 @@
 #!/usr/bin/env node
+import dotenv from "dotenv"
+import path from "path"
+import { fileURLToPath } from "url"
 import { createRegistry } from "@repo-agent/tools"
 import { Orchestrator } from "./orchestrator.js"
 import * as readline from "readline"
 import * as fs from "fs/promises"
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+dotenv.config({ path: path.resolve(__dirname, "../../../.env") })
 
 //  CLI 
 

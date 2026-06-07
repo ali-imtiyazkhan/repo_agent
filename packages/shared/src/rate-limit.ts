@@ -49,8 +49,8 @@ export class RateLimiter {
     }
 }
 
-// Gemini free tier: 15 RPM, 1M TPM — keep concurrency low
-export const geminiRateLimiter = new RateLimiter({ maxConcurrent: 2, minDelayMs: 4000 })
+// Gemini free tier: 5 RPM on flash models — one request every ~12s
+export const geminiRateLimiter = new RateLimiter({ maxConcurrent: 1, minDelayMs: 13_000 })
 
 /** @deprecated Use geminiRateLimiter instead */
 export const anthropicRateLimiter = geminiRateLimiter
