@@ -56,6 +56,23 @@ export class ToolRegistry {
         return geminiName.replace("__", ".")
     }
 
+    // OpenAI-compatible format (used by Ollama)
+    toOpenAITools(): OpenAIToolDefinition[] {
+        return Array.from(this.tools.values()).map((tool) => ({
+            type: "function" as const,
+            function: {
+                name: `${tool.namespace}__${tool.name}`,
+                description: tool.description,
+                parameters: zodToJsonSchema(tool.inputSchema),
+            },
+        }))
+    }
+
+    // Resolve from OpenAI's double-underscore format back to dot format
+    resolveOpenAIName(openaiName: string): string {
+        return openaiName.replace("__", ".")
+    }
+
 
     namespace(ns: string): Tool<unknown, unknown>[] {
         return Array.from(this.tools.entries())
@@ -105,6 +122,17 @@ export interface GeminiFunctionDeclaration {
     name: string
     description: string
     parameters: Record<string, unknown>
+}
+
+//  OpenAI tool definition shape (used by Ollama)
+
+export interface OpenAIToolDefinition {
+    type: "function"
+    function: {
+        name: string
+        description: string
+        parameters: Record<string, unknown>
+    }
 }
 
 // Recursively remove fields not supported by Gemini API schema (like additionalProperties)

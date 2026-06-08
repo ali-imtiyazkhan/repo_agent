@@ -1,9 +1,9 @@
-import {
-  GoogleGenerativeAI,
-  type Content,
-  type Part,
-  type GenerateContentResult,
-} from "@google/generative-ai"
+import OpenAI from "openai"
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionTool,
+  ChatCompletion,
+} from "openai/resources/index"
 import type {
   Plan,
   PlanStep,
@@ -14,7 +14,7 @@ import type {
   Result, 
   AgentError,
 } from "@repo-agent/shared"
-import { ok, err, withRetry, obsLogger, geminiRateLimiter } from "@repo-agent/shared"
+import { ok, err, withRetry, obsLogger, ollamaRateLimiter } from "@repo-agent/shared"
 import type { ToolRegistry } from "@repo-agent/tools"
 import { VERIFIER_TOOLS } from "@repo-agent/tools"
 import * as crypto from "crypto"
@@ -23,14 +23,15 @@ import { saveCheckpoint, loadCheckpoint } from "./checkpoint.js"
 import { buildExecutorContext, summariseContext } from "./context.js"
 
 // Constants 
-const MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest"
+const MODEL = process.env.OLLAMA_MODEL || "llama3.1:8b"
+const BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434/v1"
 const TOKEN_BUDGET = 180_000 
 const SUMMARY_THRESHOLD = 0.75
 const MAX_STEP_RETRIES = 3
 
 // Orchestrator
 export class Orchestrator {
-  private genAI: GoogleGenerativeAI
+  private openai: OpenAI
   private registry: ToolRegistry
   private sessionId: string
   private ledger: ToolCallRecord[] = []
@@ -38,9 +39,10 @@ export class Orchestrator {
   private tokensUsed: number = 0
 
   constructor(registry: ToolRegistry, apiKey?: string) {
-    const key = apiKey ?? process.env.GEMINI_API_KEY
-    if (!key) throw new Error("GEMINI_API_KEY is required")
-    this.genAI = new GoogleGenerativeAI(key)
+    this.openai = new OpenAI({
+      baseURL: BASE_URL,
+      apiKey: apiKey ?? "ollama", // Ollama doesn't need a real key
+    })
     this.registry = registry
     this.sessionId = crypto.randomUUID()
   }
@@ -53,7 +55,7 @@ export class Orchestrator {
     await obsLogger.logSessionStart(this.sessionId, goal)
 
     // Step 1: Plan
-    const planner = new Planner(this.genAI, this.registry)
+    const planner = new Planner(this.openai, this.registry)
     const planResult = await planner.plan(
       goal,
       cwd,
@@ -125,14 +127,34 @@ export class Orchestrator {
     step.attempts++
 
     const toolCallsThisStep: ToolCallRecord[] = []
-    const contents: Content[] = []
+    const messages: ChatCompletionMessageParam[] = []
+
+    // Build scoped registry for executor based on tool hints + standard fallback tools
+    const fallbackTools = [
+      "code.readFile",
+      "code.writeFile",
+      "code.listDirectory",
+      "code.searchInFiles",
+      "code.replaceInFile",
+      "shell.exec",
+      "shell.runTests",
+      "git.status",
+      "git.diff",
+      "git.commit"
+    ]
+    const allowedTools = Array.from(new Set([...fallbackTools, ...step.toolHints]))
+    const scopedRegistry = this.registry.scoped(allowedTools)
 
     // Build context: summary of past steps + ledger of recent tool calls
     const context = buildExecutorContext(step, plan, this.ledger, this.summary)
 
-    contents.push({
+    messages.push({
+      role: "system",
+      content: this.executorSystemPrompt(cwd),
+    })
+    messages.push({
       role: "user",
-      parts: [{ text: context }],
+      content: context,
     })
 
     // Agentic loop: keep calling model until it stops using tools
@@ -143,75 +165,73 @@ export class Orchestrator {
       const response = await withRetry(() =>
         this.callModel({
           system: this.executorSystemPrompt(cwd),
-          contents,
-          tools: this.registry.toGeminiTools(),
+          messages,
+          tools: scopedRegistry.toOpenAITools(),
         })
       )
 
       if (!response.ok) return response
 
       const result = response.value
-      const candidate = result.response.candidates?.[0]
-      if (!candidate) {
+      const choice = result.choices?.[0]
+      if (!choice) {
         continueLoop = false
         break
       }
 
       // Track tokens
-      const usage = result.response.usageMetadata
+      const usage = result.usage
       if (usage) {
-        this.tokensUsed += usage.promptTokenCount ?? 0
-        this.tokensUsed += usage.candidatesTokenCount ?? 0
+        this.tokensUsed += usage.prompt_tokens ?? 0
+        this.tokensUsed += usage.completion_tokens ?? 0
       }
 
-      const responseParts = candidate.content?.parts ?? []
+      const message = choice.message
 
       // Add assistant message to history
-      contents.push({ role: "model", parts: responseParts })
+      messages.push(message)
 
-      // Check for function calls
-      const functionCalls = responseParts.filter(
-        (p: Part) => "functionCall" in p && p.functionCall
-      )
+      // Check for tool calls
+      const toolCalls = message.tool_calls ?? []
 
-      if (functionCalls.length === 0) {
+      if (toolCalls.length === 0) {
         // No tool calls — extract text output and stop
         continueLoop = false
-        lastOutput = responseParts
-          .filter((p: Part) => "text" in p && p.text)
-          .map((p: Part) => p.text)
-          .join("")
+        lastOutput = message.content ?? ""
         break
       }
 
       // Process tool calls
-      const functionResponses: Part[] = []
-
-      for (const part of functionCalls) {
-        const fc = part.functionCall!
-        const toolName = this.registry.resolveGeminiName(fc.name)
-        const tool = this.registry.get(toolName)
+      for (const toolCall of toolCalls) {
+        const toolName = scopedRegistry.resolveOpenAIName(toolCall.function.name)
+        const tool = scopedRegistry.get(toolName)
         const callStart = Date.now()
 
         if (!tool) {
-          functionResponses.push({
-            functionResponse: {
-              name: fc.name,
-              response: { error: `Tool not found: ${toolName}` },
-            },
+          messages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({ error: `Tool not found: ${toolName}` }),
           })
           continue
         }
 
         console.log(`  [exec] → ${toolName}`)
 
-        const result = await tool.execute(fc.args)
+        let args: unknown
+        try {
+          args = JSON.parse(toolCall.function.arguments)
+        } catch {
+          args = {}
+        }
+
+        const result = await tool.execute(args)
         const duration = Date.now() - callStart
-        await obsLogger.logToolCall(this.sessionId, toolName, fc.args, result.ok ? result.value : result.error, duration, result.ok)
+        await obsLogger.logToolCall(this.sessionId, toolName, args, result.ok ? result.value : result.error, duration, result.ok)
 
         const record: ToolCallRecord = {
           toolName,
-          input: fc.args,
+          input: args,
           output: result.ok ? result.value : result.error,
           durationMs: duration,
           attempt: step.attempts,
@@ -221,17 +241,16 @@ export class Orchestrator {
         this.ledger.push(record)
         lastOutput = result.ok ? result.value : null
 
-        functionResponses.push({
-          functionResponse: {
-            name: fc.name,
-            response: result.ok
+        messages.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(
+            result.ok
               ? (typeof result.value === "object" && result.value !== null ? result.value : { result: result.value })
-              : { error: result.error },
-          },
+              : { error: result.error }
+          ),
         })
       }
-
-      contents.push({ role: "user", parts: functionResponses })
     }
 
     return ok({
@@ -280,19 +299,16 @@ Respond with ONLY this JSON:
     const response = await withRetry(() =>
       this.callModel({
         system: "You are a strict code reviewer. Be precise and thorough.",
-        contents: [{ role: "user", parts: [{ text: verifierPrompt }] }],
-        tools: scopedRegistry.toGeminiTools(),
+        messages: [{ role: "user", content: verifierPrompt }],
+        tools: scopedRegistry.toOpenAITools(),
       })
     )
 
     if (!response.ok) return response
 
     try {
-      const candidate = response.value.response.candidates?.[0]
-      const text = (candidate?.content?.parts ?? [])
-        .filter((p: Part) => "text" in p && p.text)
-        .map((p: Part) => p.text)
-        .join("")
+      const choice = response.value.choices?.[0]
+      const text = choice?.message?.content ?? ""
 
       const jsonMatch = text.match(/\{[\s\S]*\}/)
       if (!jsonMatch) throw new Error("No JSON in verifier response")
@@ -384,29 +400,54 @@ Respond with ONLY this JSON:
 
   async callModel(params: {
     system: string
-    contents: Content[]
-    tools: any[]
-  }): Promise<Result<GenerateContentResult, AgentError>> {
+    messages?: ChatCompletionMessageParam[]
+    tools?: ChatCompletionTool[]
+    // Legacy support: contents field will be converted to messages
+    contents?: Array<{ role: string; parts: Array<{ text?: string }> }>
+  }): Promise<Result<ChatCompletion, AgentError>> {
     try {
-      const model = this.genAI.getGenerativeModel({
-        model: MODEL,
-        systemInstruction: params.system,
-        ...(params.tools.length > 0
-          ? { tools: [{ functionDeclarations: params.tools }] }
-          : {}),
-      })
+      // Build messages array
+      let messages: ChatCompletionMessageParam[] = []
 
-      const result = await geminiRateLimiter.wrap(() =>
-        model.generateContent({ contents: params.contents })
+      if (params.messages) {
+        // If system message isn't already in messages, prepend it
+        const hasSystem = params.messages.some((m) => m.role === "system")
+        if (!hasSystem) {
+          messages.push({ role: "system", content: params.system })
+        }
+        messages.push(...params.messages)
+      } else if (params.contents) {
+        // Legacy Gemini-style contents: convert to OpenAI messages
+        messages.push({ role: "system", content: params.system })
+        for (const content of params.contents) {
+          const text = content.parts
+            .filter((p) => p.text)
+            .map((p) => p.text)
+            .join("")
+          const role = content.role === "model" ? "assistant" : content.role as "user" | "assistant"
+          messages.push({ role, content: text })
+        }
+      } else {
+        messages.push({ role: "system", content: params.system })
+      }
+
+      const result = await ollamaRateLimiter.wrap(() =>
+        this.openai.chat.completions.create({
+          model: MODEL,
+          messages,
+          ...(params.tools && params.tools.length > 0
+            ? { tools: params.tools }
+            : {}),
+        })
       )
 
-      const usage = result.response.usageMetadata
+      const usage = result.usage
       if (usage) {
         await obsLogger.logTokenUsage(
           this.sessionId,
           params.system.slice(0, 30),
-          usage.promptTokenCount ?? 0,
-          usage.candidatesTokenCount ?? 0
+          usage.prompt_tokens ?? 0,
+          usage.completion_tokens ?? 0
         )
       }
       return ok(result)
