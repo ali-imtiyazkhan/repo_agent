@@ -1,29 +1,30 @@
-import {
-    GoogleGenerativeAI,
-    type Content,
-    type Part,
-    type GenerateContentResult,
-} from "@google/generative-ai"
+import OpenAI from "openai"
+import type {
+    ChatCompletionMessageParam,
+    ChatCompletion,
+} from "openai/resources/index"
 import type { SubagentInput, SubagentOutput, Result, AgentError } from "@repo-agent/shared"
-import { ok, err, withRetry, geminiRateLimiter } from "@repo-agent/shared"
+import { ok, err, withRetry, ollamaRateLimiter } from "@repo-agent/shared"
 import type { ToolRegistry } from "@repo-agent/tools"
 
-const MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest"
+const MODEL = process.env.OLLAMA_MODEL || "llama3.1:8b"
+const BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434/v1"
 
 // BaseSubagent 
-// Each subagent runs in a completely isolated Gemini API context. 
+// Each subagent runs in a completely isolated API context. 
 // It has its own message history, its own scoped tool set, and returns
 // a strongly-typed structured result back to the orchestrator.
 // This is NOT a function call — it is a full independent agent execution.
 
 export abstract class BaseSubagent<TInput, TOutput> {
-    protected genAI: GoogleGenerativeAI
+    protected openai: OpenAI
     protected registry: ToolRegistry
 
     constructor(registry: ToolRegistry, apiKey?: string) {
-        const key = apiKey ?? process.env.GEMINI_API_KEY
-        if (!key) throw new Error("GEMINI_API_KEY is required")
-        this.genAI = new GoogleGenerativeAI(key)
+        this.openai = new OpenAI({
+            baseURL: BASE_URL,
+            apiKey: apiKey ?? "ollama", // Ollama doesn't need a real key
+        })
         this.registry = registry
     }
 
@@ -35,49 +36,49 @@ export abstract class BaseSubagent<TInput, TOutput> {
         input: SubagentInput<TInput>
     ): Promise<Result<SubagentOutput<TOutput>, AgentError>> {
         const scopedRegistry = this.registry.scoped(this.allowedTools)
-        const contents: Content[] = []
+        const messages: ChatCompletionMessageParam[] = []
         let toolCallCount = 0
         let totalTokens = 0
 
+        // System message
+        messages.push({
+            role: "system",
+            content: this.systemPrompt,
+        })
+
         // Initial message to the subagent
-        contents.push({
+        messages.push({
             role: "user",
-            parts: [{ text: this.buildPrompt(input) }],
+            content: this.buildPrompt(input),
         })
 
         // Isolated agentic loop
         while (true) {
             const response = await withRetry(() =>
                 this.callModel({
-                    system: this.systemPrompt,
-                    contents,
-                    tools: scopedRegistry.toGeminiTools(),
+                    messages,
+                    tools: scopedRegistry.toOpenAITools(),
                 })
             )
 
             if (!response.ok) return response
 
             const result = response.value
-            const candidate = result.response.candidates?.[0]
-            if (!candidate) break
+            const choice = result.choices?.[0]
+            if (!choice) break
 
-            const usage = result.response.usageMetadata
-            totalTokens += (usage?.promptTokenCount ?? 0) + (usage?.candidatesTokenCount ?? 0)
+            const usage = result.usage
+            totalTokens += (usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0)
 
-            const responseParts = candidate.content?.parts ?? []
-            contents.push({ role: "model", parts: responseParts })
+            const message = choice.message
+            messages.push(message)
 
-            // Check for function calls
-            const functionCalls = responseParts.filter(
-                (p: Part) => "functionCall" in p && p.functionCall
-            )
+            // Check for tool calls
+            const toolCalls = message.tool_calls ?? []
 
             // Done — extract structured result
-            if (functionCalls.length === 0) {
-                const text = responseParts
-                    .filter((p: Part) => "text" in p && p.text)
-                    .map((p: Part) => p.text)
-                    .join("")
+            if (toolCalls.length === 0) {
+                const text = message.content ?? ""
 
                 try {
                     const parsed = this.parseOutput(text)
@@ -98,38 +99,41 @@ export abstract class BaseSubagent<TInput, TOutput> {
             }
 
             // Process tool calls
-            const functionResponses: Part[] = []
-
-            for (const part of functionCalls) {
-                const fc = part.functionCall!
-                const toolName = scopedRegistry.resolveGeminiName(fc.name)
+            for (const toolCall of toolCalls) {
+                const toolName = scopedRegistry.resolveOpenAIName(toolCall.function.name)
                 const tool = scopedRegistry.get(toolName)
                 toolCallCount++
 
                 if (!tool) {
-                    functionResponses.push({
-                        functionResponse: {
-                            name: fc.name,
-                            response: { error: `Tool not available in this context: ${toolName}` },
-                        },
+                    messages.push({
+                        role: "tool",
+                        tool_call_id: toolCall.id,
+                        content: JSON.stringify({ error: `Tool not available in this context: ${toolName}` }),
                     })
                     continue
                 }
 
                 console.log(`    [subagent:${this.constructor.name}] → ${toolName}`)
-                const result = await tool.execute(fc.args)
 
-                functionResponses.push({
-                    functionResponse: {
-                        name: fc.name,
-                        response: result.ok
+                let args: unknown
+                try {
+                    args = JSON.parse(toolCall.function.arguments)
+                } catch {
+                    args = {}
+                }
+
+                const result = await tool.execute(args)
+
+                messages.push({
+                    role: "tool",
+                    tool_call_id: toolCall.id,
+                    content: JSON.stringify(
+                        result.ok
                             ? (typeof result.value === "object" && result.value !== null ? result.value : { result: result.value })
-                            : { error: result.error },
-                    },
+                            : { error: result.error }
+                    ),
                 })
             }
-
-            contents.push({ role: "user", parts: functionResponses })
         }
 
         return err({
@@ -152,21 +156,18 @@ export abstract class BaseSubagent<TInput, TOutput> {
     }
 
     private async callModel(params: {
-        system: string
-        contents: Content[]
+        messages: ChatCompletionMessageParam[]
         tools: any[]
-    }): Promise<Result<GenerateContentResult, AgentError>> {
+    }): Promise<Result<ChatCompletion, AgentError>> {
         try {
-            const model = this.genAI.getGenerativeModel({
-                model: MODEL,
-                systemInstruction: params.system,
-                ...(params.tools.length > 0
-                    ? { tools: [{ functionDeclarations: params.tools }] }
-                    : {}),
-            })
-
-            const result = await geminiRateLimiter.wrap(() =>
-                model.generateContent({ contents: params.contents })
+            const result = await ollamaRateLimiter.wrap(() =>
+                this.openai.chat.completions.create({
+                    model: MODEL,
+                    messages: params.messages,
+                    ...(params.tools.length > 0
+                        ? { tools: params.tools }
+                        : {}),
+                })
             )
             return ok(result)
         } catch (e) {

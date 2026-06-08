@@ -10,12 +10,10 @@ import type { EvalFixture, EvalHarnessOptions, EvalResult } from "./types.js"
 
 export class EvalHarness {
     private outputDir: string
-    private apiKey: string | undefined
     private keepWorkdir: boolean
 
     constructor(options: EvalHarnessOptions = {}) {
         this.outputDir = options.outputDir ?? "eval-results"
-        this.apiKey = options.apiKey ?? process.env.GEMINI_API_KEY
         this.keepWorkdir = options.keepWorkdir ?? false
     }
 
@@ -31,11 +29,11 @@ export class EvalHarness {
 
         try {
             const registry = createRegistry()
-            const orchestrator = new Orchestrator(registry, this.apiKey)
+            const orchestrator = new Orchestrator(registry)
 
             const result = await Promise.race([
                 orchestrator.run(fixture.goal, cwd),
-                this.timeout(fixture.timeoutMs ?? 300_000),
+                this.timeout((fixture.timeoutMs ?? 300_000) * 4),
             ])
 
             if (!result || !("ok" in result)) {

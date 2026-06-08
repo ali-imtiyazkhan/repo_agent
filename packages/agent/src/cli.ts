@@ -65,18 +65,11 @@ async function runCommand() {
 
 async function runGoal(goal: string) {
     const cwd = process.env.REPO_PATH ?? process.cwd()
-    const apiKey = process.env.GEMINI_API_KEY
-
-    if (!apiKey) {
-        console.error("[error] GEMINI_API_KEY environment variable is required")
-        process.exit(1)
-    }
-
     console.log(`[cli] Working directory: ${cwd}`)
     console.log(`[cli] Goal: ${goal}\n`)
 
     const registry = createRegistry()
-    const orchestrator = new Orchestrator(registry, apiKey)
+    const orchestrator = new Orchestrator(registry)
 
     const result = await orchestrator.run(goal, cwd)
 

@@ -1,8 +1,4 @@
-import type {
-    Content,
-    Part,
-    GenerateContentResult,
-} from "@google/generative-ai"
+import type { ChatCompletion } from "openai/resources/index"
 import type { Plan, PlanStep, ToolCallRecord, Result, AgentError } from "@repo-agent/shared"
 
 export function buildExecutorContext(
@@ -38,7 +34,7 @@ export function buildExecutorContext(
 export async function summariseContext(
     plan: Plan,
     ledger: ToolCallRecord[],
-    callModel: (params: { system: string; contents: Content[]; tools: any[] }) => Promise<Result<GenerateContentResult, AgentError>>
+    callModel: (params: { system: string; contents: Array<{ role: string; parts: Array<{ text?: string }> }>; tools: any[] }) => Promise<Result<ChatCompletion, AgentError>>
 ): Promise<{ summary: string; ledger: ToolCallRecord[] }> {
     console.log("[orchestrator] Summarising context (token budget threshold reached)")
 
@@ -64,11 +60,8 @@ export async function summariseContext(
     let summary = ""
     let newLedger = ledger
     if (response.ok) {
-        const candidate = response.value.response.candidates?.[0]
-        summary = (candidate?.content?.parts ?? [])
-            .filter((p: Part) => "text" in p && p.text)
-            .map((p: Part) => p.text)
-            .join("")
+        const choice = response.value.choices?.[0]
+        summary = choice?.message?.content ?? ""
         newLedger = ledger.slice(-5)
     }
 

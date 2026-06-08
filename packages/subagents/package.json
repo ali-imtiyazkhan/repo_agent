@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.0",
+    "openai": "^4.0.0",
     "@repo-agent/shared": "workspace:*",
     "@repo-agent/tools": "workspace:*"
   },

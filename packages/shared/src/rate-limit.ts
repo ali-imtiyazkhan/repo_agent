@@ -49,8 +49,11 @@ export class RateLimiter {
     }
 }
 
-// Gemini free tier: 5 RPM on flash models — one request every ~12s
-export const geminiRateLimiter = new RateLimiter({ maxConcurrent: 1, minDelayMs: 13_000 })
+// Ollama runs locally — just serialise to avoid overloading resources
+export const ollamaRateLimiter = new RateLimiter({ maxConcurrent: 1, minDelayMs: 100 })
 
-/** @deprecated Use geminiRateLimiter instead */
-export const anthropicRateLimiter = geminiRateLimiter
+/** @deprecated Use ollamaRateLimiter instead */
+export const geminiRateLimiter = ollamaRateLimiter
+
+/** @deprecated Use ollamaRateLimiter instead */
+export const anthropicRateLimiter = ollamaRateLimiter
