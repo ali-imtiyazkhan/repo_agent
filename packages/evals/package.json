@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "eval": "tsx src/runner.ts",
-    "eval:single": "tsx src/runner.ts --fixture"
+    "eval:single": "tsx src/runner.ts"
   },
   "dependencies": {
     "@repo-agent/agent": "workspace:*",

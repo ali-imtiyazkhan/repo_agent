@@ -10,7 +10,10 @@ import { EvalHarness, FIXTURES } from "./index.js"
 
 const args = process.argv.slice(2)
 const fixtureFlag = args.indexOf("--fixture")
-const fixtureId = fixtureFlag !== -1 ? args[fixtureFlag + 1] : undefined
+const fixtureId =
+  fixtureFlag !== -1
+    ? args[fixtureFlag + 1]
+    : args.find((a) => !a.startsWith("-"))
 
 async function main() {
   // Check that Gemini API key is set
