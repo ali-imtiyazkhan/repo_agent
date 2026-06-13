@@ -473,14 +473,15 @@ export const shellWhich: Tool<
             const available: Record<string, boolean> = {}
             const paths: Record<string, string> = {}
 
+            const whichCmd = process.platform === "win32" ? "where" : "which"
             for (const cmd of commands) {
                 try {
-                    const result = await execaCommand(`which ${cmd}`, {
+                    const result = await execaCommand(`${whichCmd} ${cmd}`, {
                         shell: true,
                         reject: false,
                     })
                     available[cmd] = result.exitCode === 0
-                    paths[cmd] = result.stdout.trim()
+                    paths[cmd] = result.stdout.trim().split("\n")[0] ?? ""
                 } catch {
                     available[cmd] = false
                     paths[cmd] = ""

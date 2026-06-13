@@ -32,11 +32,8 @@ export const agentRunReviewer: Tool<
         try {
             const registry = getGlobalRegistry()
             // Dynamic import to break circular dependency: tools → subagents → tools.
-            // @repo-agent/subagents cannot be a declared dependency of @repo-agent/tools
-            // because subagents already depends on tools. pnpm workspace symlinks resolve
-            // the specifier at runtime; we suppress the compile-time error here.
-            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-            // @ts-expect-error — circular dep; resolved at runtime by pnpm workspace
+            // @repo-agent/subagents is resolved at runtime via pnpm workspace symlinks.
+            // @ts-expect-error — circular dep, resolved at runtime
             const mod = (await import("@repo-agent/subagents")) as {
                 ReviewerSubagent: new (registry: ReturnType<typeof getGlobalRegistry>) => {
                     run(input: { task: string; context: string; data: { diff: string }; scopedTools: string[] }):

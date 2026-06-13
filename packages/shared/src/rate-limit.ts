@@ -49,11 +49,5 @@ export class RateLimiter {
     }
 }
 
-// Ollama runs locally — just serialise to avoid overloading resources
-export const ollamaRateLimiter = new RateLimiter({ maxConcurrent: 1, minDelayMs: 100 })
-
-/** @deprecated Use ollamaRateLimiter instead */
-export const geminiRateLimiter = ollamaRateLimiter
-
-/** @deprecated Use ollamaRateLimiter instead */
-export const anthropicRateLimiter = ollamaRateLimiter
+// Gemini rate limiter — serialise to avoid hitting API limits
+export const geminiRateLimiter = new RateLimiter({ maxConcurrent: 1, minDelayMs: 100 })

@@ -1,4 +1,4 @@
-import type { ChatCompletion } from "openai/resources/index"
+import type { ChatCompletionMessageParam, ChatCompletion } from "openai/resources/index"
 import type { Plan, PlanStep, ToolCallRecord, Result, AgentError } from "@repo-agent/shared"
 
 export function buildExecutorContext(
@@ -34,24 +34,22 @@ export function buildExecutorContext(
 export async function summariseContext(
     plan: Plan,
     ledger: ToolCallRecord[],
-    callModel: (params: { system: string; contents: Array<{ role: string; parts: Array<{ text?: string }> }>; tools: any[] }) => Promise<Result<ChatCompletion, AgentError>>
+    callModel: (params: { system: string; messages: ChatCompletionMessageParam[]; tools: any[] }) => Promise<Result<ChatCompletion, AgentError>>
 ): Promise<{ summary: string; ledger: ToolCallRecord[] }> {
     console.log("[orchestrator] Summarising context (token budget threshold reached)")
 
     const response = await callModel({
         system: "Summarise the following agent session context concisely for future reference.",
-        contents: [
+        messages: [
             {
                 role: "user",
-                parts: [{
-                    text: `Goal: ${plan.goal}\n\nCompleted steps:\n${plan.steps
-                        .filter((s) => s.status === "done")
-                        .map((s) => `- ${s.description}: ${JSON.stringify(s.result).slice(0, 300)}`)
-                        .join("\n")}\n\nRecent tool calls:\n${ledger
-                        .slice(-20)
-                        .map((r) => `${r.toolName}: ${JSON.stringify(r.output).slice(0, 200)}`)
-                        .join("\n")}`,
-                }],
+                content: `Goal: ${plan.goal}\n\nCompleted steps:\n${plan.steps
+                    .filter((s) => s.status === "done")
+                    .map((s) => `- ${s.description}: ${JSON.stringify(s.result).slice(0, 300)}`)
+                    .join("\n")}\n\nRecent tool calls:\n${ledger
+                    .slice(-20)
+                    .map((r) => `${r.toolName}: ${JSON.stringify(r.output).slice(0, 200)}`)
+                    .join("\n")}`,
             },
         ],
         tools: [],

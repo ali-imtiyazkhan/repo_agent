@@ -13,12 +13,9 @@ const fixtureFlag = args.indexOf("--fixture")
 const fixtureId = fixtureFlag !== -1 ? args[fixtureFlag + 1] : undefined
 
 async function main() {
-  // Check that Ollama is running
-  const baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434"
-  try {
-    await fetch(`${baseUrl.replace("/v1", "")}/api/tags`)
-  } catch {
-    console.error("[eval] Ollama is not running. Start it with: ollama serve")
+  // Check that Gemini API key is set
+  if (!process.env.GEMINI_API_KEY) {
+    console.error("[eval] GEMINI_API_KEY is not set. Set it in .env or as an environment variable.")
     process.exit(1)
   }
 

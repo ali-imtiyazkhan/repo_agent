@@ -14,7 +14,7 @@ import type {
   Result, 
   AgentError,
 } from "@repo-agent/shared"
-import { ok, err, withRetry, obsLogger, ollamaRateLimiter } from "@repo-agent/shared"
+import { ok, err, withRetry, obsLogger, geminiRateLimiter } from "@repo-agent/shared"
 import type { ToolRegistry } from "@repo-agent/tools"
 import { VERIFIER_TOOLS } from "@repo-agent/tools"
 import * as crypto from "crypto"
@@ -23,8 +23,8 @@ import { saveCheckpoint, loadCheckpoint } from "./checkpoint.js"
 import { buildExecutorContext, summariseContext } from "./context.js"
 
 // Constants 
-const MODEL = process.env.OLLAMA_MODEL || "llama3.1:8b"
-const BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434/v1"
+const MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash"
+const BASE_URL = process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta/openai/"
 const TOKEN_BUDGET = 180_000 
 const SUMMARY_THRESHOLD = 0.75
 const MAX_STEP_RETRIES = 3
@@ -41,7 +41,7 @@ export class Orchestrator {
   constructor(registry: ToolRegistry, apiKey?: string) {
     this.openai = new OpenAI({
       baseURL: BASE_URL,
-      apiKey: apiKey ?? "ollama", // Ollama doesn't need a real key
+      apiKey: apiKey ?? process.env.GEMINI_API_KEY,
     })
     this.registry = registry
     this.sessionId = crypto.randomUUID()
@@ -59,7 +59,6 @@ export class Orchestrator {
     const planResult = await planner.plan(
       goal,
       cwd,
-      MODEL,
       TOKEN_BUDGET,
       MAX_STEP_RETRIES,
       (params) => this.callModel(params)
@@ -402,36 +401,21 @@ Respond with ONLY this JSON:
     system: string
     messages?: ChatCompletionMessageParam[]
     tools?: ChatCompletionTool[]
-    // Legacy support: contents field will be converted to messages
-    contents?: Array<{ role: string; parts: Array<{ text?: string }> }>
   }): Promise<Result<ChatCompletion, AgentError>> {
     try {
-      // Build messages array
-      let messages: ChatCompletionMessageParam[] = []
+      const messages: ChatCompletionMessageParam[] = []
 
       if (params.messages) {
-        // If system message isn't already in messages, prepend it
         const hasSystem = params.messages.some((m) => m.role === "system")
         if (!hasSystem) {
           messages.push({ role: "system", content: params.system })
         }
         messages.push(...params.messages)
-      } else if (params.contents) {
-        // Legacy Gemini-style contents: convert to OpenAI messages
-        messages.push({ role: "system", content: params.system })
-        for (const content of params.contents) {
-          const text = content.parts
-            .filter((p) => p.text)
-            .map((p) => p.text)
-            .join("")
-          const role = content.role === "model" ? "assistant" : content.role as "user" | "assistant"
-          messages.push({ role, content: text })
-        }
       } else {
         messages.push({ role: "system", content: params.system })
       }
 
-      const result = await ollamaRateLimiter.wrap(() =>
+      const result = await geminiRateLimiter.wrap(() =>
         this.openai.chat.completions.create({
           model: MODEL,
           messages,
