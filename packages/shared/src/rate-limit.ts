@@ -49,5 +49,5 @@ export class RateLimiter {
     }
 }
 
-// Gemini rate limiter — serialise to avoid hitting API limits
-export const geminiRateLimiter = new RateLimiter({ maxConcurrent: 1, minDelayMs: 100 })
+// Gemini rate limiter — serialise to stay within free tier (~30 req/min)
+export const geminiRateLimiter = new RateLimiter({ maxConcurrent: 1, minDelayMs: 2200 })
