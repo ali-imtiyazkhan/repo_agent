@@ -4,11 +4,11 @@ import type {
     ChatCompletion,
 } from "openai/resources/index"
 import type { SubagentInput, SubagentOutput, Result, AgentError } from "@repo-agent/shared"
-import { ok, err, withRetry, ollamaRateLimiter } from "@repo-agent/shared"
+import { ok, err, withRetry, geminiRateLimiter } from "@repo-agent/shared"
 import type { ToolRegistry } from "@repo-agent/tools"
 
-const MODEL = process.env.OLLAMA_MODEL || "llama3.1:8b"
-const BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434/v1"
+const MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash"
+const BASE_URL = process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 // BaseSubagent 
 // Each subagent runs in a completely isolated API context. 
@@ -23,7 +23,7 @@ export abstract class BaseSubagent<TInput, TOutput> {
     constructor(registry: ToolRegistry, apiKey?: string) {
         this.openai = new OpenAI({
             baseURL: BASE_URL,
-            apiKey: apiKey ?? "ollama", // Ollama doesn't need a real key
+            apiKey: apiKey ?? process.env.GEMINI_API_KEY,
         })
         this.registry = registry
     }
@@ -160,7 +160,7 @@ export abstract class BaseSubagent<TInput, TOutput> {
         tools: any[]
     }): Promise<Result<ChatCompletion, AgentError>> {
         try {
-            const result = await ollamaRateLimiter.wrap(() =>
+            const result = await geminiRateLimiter.wrap(() =>
                 this.openai.chat.completions.create({
                     model: MODEL,
                     messages: params.messages,

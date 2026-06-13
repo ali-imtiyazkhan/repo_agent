@@ -304,26 +304,47 @@ export const codeSearchInFiles: Tool<
     async execute(input) {
         const { cwd, pattern, extensions, caseSensitive = true, maxResults = 100 } = input
         try {
-            const flags = caseSensitive ? "" : "-i"
-            const extFilter =
-                extensions
-                    ?.map((e) => `--include="*${e}"`)
-                    .join(" ") ?? ""
-            const cmd = `grep -rn ${flags} ${extFilter} "${pattern}" . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist`
+            const flags = caseSensitive ? "" : "i"
+            const regex = new RegExp(pattern, flags + "g")
+            const matches: Array<{ file: string; line: number; column: number; text: string }> = []
 
-            const result = await execaCommand(cmd, { cwd, shell: true, reject: false })
-            const lines = result.stdout.split("\n").filter(Boolean).slice(0, maxResults)
-
-            const matches = lines.map((line) => {
-                const parts = line.split(":")
-                return {
-                    file: parts[0] ?? "",
-                    line: parseInt(parts[1] ?? "0", 10),
-                    column: 0,
-                    text: parts.slice(2).join(":").trim(),
+            async function walk(dir: string) {
+                if (matches.length >= maxResults) return
+                let entries
+                try {
+                    entries = await fs.readdir(dir, { withFileTypes: true })
+                } catch { return }
+                for (const entry of entries) {
+                    if (matches.length >= maxResults) return
+                    if (entry.name === "node_modules" || entry.name === ".git" || entry.name === "dist" || entry.name.startsWith(".")) continue
+                    const fullPath = path.join(dir, entry.name)
+                    if (entry.isDirectory()) {
+                        await walk(fullPath)
+                    } else if (!extensions || extensions.some((e: string) => entry.name.endsWith(e))) {
+                        try {
+                            const content = await fs.readFile(fullPath, "utf-8")
+                            const lines = content.split("\n")
+                            for (let i = 0; i < lines.length; i++) {
+                                if (matches.length >= maxResults) break
+                                const line = lines[i]
+                                if (line === undefined) continue
+                                regex.lastIndex = 0
+                                const match = regex.exec(line)
+                                if (match) {
+                                    matches.push({
+                                        file: fullPath,
+                                        line: i + 1,
+                                        column: (match.index ?? 0) + 1,
+                                        text: line.trim().slice(0, 200),
+                                    })
+                                }
+                            }
+                        } catch { /* skip unreadable files */ }
+                    }
                 }
-            })
+            }
 
+            await walk(cwd)
             return ok({ matches, totalMatches: matches.length })
         } catch (e) {
             return err({

@@ -7,12 +7,12 @@ This repository contains `repo-agent`, a production-grade autonomous agent frame
 
 ## Fulfilling the Five Properties
 
-1. **51 Dynamic Tools Across 5 Namespaces**: We support 51 tools across `git`, `github`, `code`, `shell`, and `agent` namespaces. The registry uses dynamic lookup and exports definitions in Anthropic’s format. Tool dispatching is purely dynamic and model-driven, preventing switch-case dispatches or conditional loops.
-2. **Subagent Orchestration**: Spawns a fully isolated `ReviewerSubagent` execution context with its own Anthropic API messages history, a scoped toolset (`code.readFile`, `git.diff`, etc.), and strict structured JSON outputs that parse and return review comments directly to the parent runner.
+1. **52 Dynamic Tools Across 5 Namespaces**: We support 52 tools across `git`, `github`, `code`, `shell`, and `agent` namespaces. The registry uses dynamic lookup and exports definitions in OpenAI format. Tool dispatching is purely dynamic and model-driven, preventing switch-case dispatches or conditional loops.
+2. **Subagent Orchestration**: Spawns a fully isolated `ReviewerSubagent` execution context with its own OpenAI API messages history, a scoped toolset (`code.readFile`, `git.diff`, etc.), and strict structured JSON outputs that parse and return review comments directly to the parent runner.
 3. **Long-Horizon Execution**: The main orchestrator incorporates a token-limit tracker. Once token usage approaches 75% of the budget, it runs a summarization loop to compress context history without plan loss. In addition, it checkpoints session states to `.agent-checkpoints/<session-id>.json` to recover from interruptions.
 4. **Production Scaffolding**: 
    - **Observability**: Records all step updates, tool invocations, cost/token metrics, durations, and errors into a structured `.agent-logs/trace.jsonl` file.
-   - **Rate Limiting**: Implements a shared concurrency and inter-request delay rate-limiter wrapping Anthropic calls.
+   - **Rate Limiting**: Implements a shared concurrency and inter-request delay rate-limiter wrapping Gemini API calls.
    - **Retries**: Exponential backoff with jitter handles network flakiness.
    - **Tests & Evals**: Unit test suite configured via Vitest; evaluation benchmark harness verifies code changes automatically.
 5. **Composable Tool Inputs/Outputs**: Designed with composable interfaces. For example, `git.diff` produces a structured patch which is passed as direct input to `agent.runReviewer` (subagent review) and then processed by `code.applyPatch`.

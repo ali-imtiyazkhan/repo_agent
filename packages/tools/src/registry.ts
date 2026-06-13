@@ -28,35 +28,7 @@ export class ToolRegistry {
         return this.tools.has(fullName)
     }
 
-    // Anthropic expects dots replaced with double underscores in tool names
-    toAnthropicTools(): AnthropicToolDefinition[] {
-        return Array.from(this.tools.values()).map((tool) => ({
-            name: `${tool.namespace}__${tool.name}`,
-            description: tool.description,
-            input_schema: zodToJsonSchema(tool.inputSchema),
-        }))
-    }
-
-    // Resolve from Anthropic's double-underscore format back to dot format
-    resolveAnthropicName(anthropicName: string): string {
-        return anthropicName.replace("__", ".")
-    }
-
-    // Gemini uses functionDeclarations with underscores (dots not allowed)
-    toGeminiTools(): GeminiFunctionDeclaration[] {
-        return Array.from(this.tools.values()).map((tool) => ({
-            name: `${tool.namespace}__${tool.name}`,
-            description: tool.description,
-            parameters: sanitizeGeminiSchema(zodToJsonSchema(tool.inputSchema)),
-        }))
-    }
-
-    // Resolve from Gemini's double-underscore format back to dot format
-    resolveGeminiName(geminiName: string): string {
-        return geminiName.replace("__", ".")
-    }
-
-    // OpenAI-compatible format (used by Ollama)
+    // OpenAI-compatible format (used by Gemini)
     toOpenAITools(): OpenAIToolDefinition[] {
         return Array.from(this.tools.values()).map((tool) => ({
             type: "function" as const,
@@ -108,23 +80,7 @@ export class ToolRegistry {
     }
 }
 
-//  Anthropic tool definition shape 
-
-export interface AnthropicToolDefinition {
-    name: string
-    description: string
-    input_schema: Record<string, unknown>
-}
-
-//  Gemini function declaration shape 
-
-export interface GeminiFunctionDeclaration {
-    name: string
-    description: string
-    parameters: Record<string, unknown>
-}
-
-//  OpenAI tool definition shape (used by Ollama)
+//  OpenAI tool definition shape (used by Gemini)
 
 export interface OpenAIToolDefinition {
     type: "function"
@@ -133,26 +89,6 @@ export interface OpenAIToolDefinition {
         description: string
         parameters: Record<string, unknown>
     }
-}
-
-// Recursively remove fields not supported by Gemini API schema (like additionalProperties)
-export function sanitizeGeminiSchema(schema: Record<string, unknown>): Record<string, unknown> {
-    const clone = JSON.parse(JSON.stringify(schema))
-
-    function removeUnsupported(obj: any) {
-        if (typeof obj !== "object" || obj === null) return
-
-        if ("additionalProperties" in obj) {
-            delete obj.additionalProperties
-        }
-
-        for (const value of Object.values(obj)) {
-            removeUnsupported(value)
-        }
-    }
-
-    removeUnsupported(clone)
-    return clone
 }
 
 // Zod → JSON Schema 

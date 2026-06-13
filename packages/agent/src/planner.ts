@@ -20,10 +20,9 @@ export class Planner {
     async plan(
         goal: string,
         cwd: string,
-        modelName: string,
         tokenBudget: number,
         maxStepRetries: number,
-        callModel: (params: { system: string; contents: Array<{ role: string; parts: Array<{ text?: string }> }>; tools: any[] }) => Promise<Result<ChatCompletion, AgentError>>
+        callModel: (params: { system: string; messages: ChatCompletionMessageParam[]; tools: any[] }) => Promise<Result<ChatCompletion, AgentError>>
     ): Promise<Result<Plan, AgentError>> {
         const toolList = this.registry.list().join(", ")
 
@@ -41,10 +40,10 @@ Return ONLY valid JSON matching this schema:
     }
   ]
 }`,
-                contents: [
+                messages: [
                     {
                         role: "user",
-                        parts: [{ text: `Goal: ${goal}\nRepository path: ${cwd}\n\nCreate a step-by-step plan.` }],
+                        content: `Goal: ${goal}\nRepository path: ${cwd}\n\nCreate a step-by-step plan.`,
                     },
                 ],
                 tools: [],
