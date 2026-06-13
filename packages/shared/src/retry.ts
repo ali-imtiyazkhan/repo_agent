@@ -22,7 +22,7 @@ function computeDelay(attempt: number, opts: RetryOptions): number {
 }
 
 function parseRetryDelayMs(message: string): number | undefined {
-    const match = message.match(/retry in (\d+(?:\.\d+)?)s/i)
+    const match = message.match(/retry (?:in|after) (\d+(?:\.\d+)?)s/i)
     if (!match) return undefined
     return Math.ceil(parseFloat(match[1]!) * 1000) + 1000
 }
